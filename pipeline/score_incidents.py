@@ -55,11 +55,16 @@ for idx, inc in enumerate(incidents):
 
     # ---------- anomaly strength ----------
     window_errors = scores[inc]
+
     anomaly_strength = float(window_errors.mean())
 
-    dataset_energy = scores.mean() + 1e-6
-    anomaly_strength = anomaly_strength / (3 * dataset_energy)
-    anomaly_strength = float(np.clip(anomaly_strength, 0, 3))
+    # normalize using incident context instead of dataset
+    anomaly_strength = anomaly_strength / (window_errors.std() + 1e-6)
+
+    # scale safely
+    anomaly_strength = np.tanh(anomaly_strength)
+
+    print("DEBUG anomaly_strength:", anomaly_strength)
 
     print("DEBUG anomaly_strength:", anomaly_strength)
 
@@ -68,6 +73,12 @@ for idx, inc in enumerate(incidents):
 
     # ---------- REAL SENSOR VECTOR ----------
     sensor_vec = sensor_errors[inc].mean(axis=0)
+
+    # Step 1 — remove scale bias
+    sensor_vec = sensor_vec / (np.linalg.norm(sensor_vec) + 1e-6)
+
+    # Step 2 — enhance relational contrast
+    sensor_vec = sensor_vec - sensor_vec.mean()
     print("DEBUG sensor_vec:", sensor_vec)
     
     node_vec = torch.tensor(
@@ -80,8 +91,9 @@ for idx, inc in enumerate(incidents):
         gnn_out = model(node_vec, edge_index)
         graph_risk = float(gnn_out.abs().mean().item())
 
-    graph_risk = graph_risk / (3 * dataset_energy)
-    graph_risk = float(np.clip(graph_risk, 0, 3))
+    graph_risk = np.tanh(graph_risk)
+
+    print("DEBUG graph_risk:", graph_risk)
 
     print("DEBUG graph_risk:", graph_risk)
 

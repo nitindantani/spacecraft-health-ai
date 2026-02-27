@@ -14,6 +14,12 @@ std = sensor_errors.std(axis=0) + 1e-8
 
 sensor_errors = (sensor_errors - mean) / std
 
+# pattern normalization per time window
+norms = np.linalg.norm(sensor_errors, axis=1, keepdims=True) + 1e-6
+sensor_errors = sensor_errors / norms
+
+sensor_errors = sensor_errors - sensor_errors.mean(axis=1, keepdims=True)
+
 features = torch.tensor(sensor_errors, dtype=torch.float32)
 
 print("Feature shape:", features.shape)
