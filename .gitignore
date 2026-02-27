@@ -1,0 +1,9 @@
+outputs/
+normalized/
+data/
+*.npy
+*.pt
+*.csv
+*.log
+__pycache__/
+.env

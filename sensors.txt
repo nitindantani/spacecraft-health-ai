@@ -1,0 +1,194 @@
+🛰️ 1️⃣ Why sensors are labeled X, Y, Z
+
+Spacecraft lives in 3-D space.
+
+So every physical quantity is measured along 3 axes:
+
+X → left–right direction
+Y → forward–back direction
+Z → up–down direction
+
+This coordinate system is fixed to the spacecraft body.
+
+Engineers call this the body reference frame.
+
+Why we need all three axes
+
+Because motion, vibration, and heat are never perfectly symmetric.
+
+Example:
+
+landing shock may be stronger downward → Z axis spike
+
+rover movement may be forward → Y vibration
+
+instrument heating may be one side only → X temp rise
+
+If we measure only one direction, we miss real behaviour.
+
+So X/Y/Z = full spatial understanding.
+
+🌡️ 2️⃣ Thermal sensors (Temp X, Y, Z)
+
+These measure temperature at different parts of the payload.
+
+They are not random duplicates.
+
+Each axis sensor is placed in a different orientation on the instrument.
+
+What they tell engineers
+✔ Power stress
+
+If electronics overheat, temperature rises.
+
+✔ Sun exposure
+
+If one side faces Sun → that axis heats.
+
+✔ Cooling system failure
+
+Thermal gradient appears between axes.
+
+✔ Lunar environment effects
+
+Night/day cycles cause slow temp drift.
+
+Why three temperature sensors
+
+Because:
+
+Uniform heating  → normal
+One-axis heating → possible fault
+Rapid temp change → possible electronics issue
+
+So temp X/Y/Z helps detect spatial heat imbalance.
+
+
+🧭 3️⃣ Accelerometer sensors (Coarse)
+
+These measure large mechanical motion.
+
+Placed to capture spacecraft body movement.
+
+What they tell engineers
+✔ Landing shock
+
+Huge Z-axis spike.
+
+✔ Structural vibration
+
+Repeated oscillations.
+
+✔ Thruster firing effects
+
+Directional acceleration.
+
+✔ Rover movement
+
+Periodic vibration pattern.
+
+Why coarse sensors exist
+
+They capture big motion, but may miss subtle signals.
+
+Think of them as:
+
+Low sensitivity
+Wide measurement range
+
+
+🔬 4️⃣ Accelerometer sensors (Fine)
+
+These measure tiny vibrations.
+
+Much more sensitive than coarse ones.
+
+What they tell engineers
+✔ Seismic activity on moon surface
+✔ Instrument micro-movement
+✔ structural resonance
+✔ sensor drift
+
+These can detect motion invisible to coarse sensors.
+
+Why both coarse AND fine exist
+
+Because spacecraft needs:
+
+Coarse → detect big shocks
+Fine   → detect tiny signals
+
+If only fine sensors exist:
+
+they saturate during big shock
+
+If only coarse exist:
+
+they miss small anomalies
+
+So both together give full picture.
+
+🧠 5️⃣ How engineers interpret sensor behaviour
+
+They don’t look at single values.
+
+They look at patterns across axes.
+
+Examples:
+
+Example A — Thermal imbalance
+Temp X ↑↑
+Temp Y normal
+Temp Z normal
+
+Possible meaning:
+
+one side heating
+
+insulation problem
+
+component overheating locally
+
+Example B — Landing shock
+Accel Z huge spike
+Accel X small
+Accel Y small
+
+Meaning:
+
+vertical impact
+
+normal landing behaviour
+
+Example C — Mechanical drift
+Fine Y oscillation
+Coarse Y stable
+Temp stable
+
+Meaning:
+
+instrument vibration
+
+not structural shock
+
+possible internal resonance
+
+🚀 6️⃣ Why this matters for OUR AI project
+
+our AI models don’t just see numbers.
+
+They see physical behaviour patterns.
+
+So when our model says:
+
+Temp Y abnormal + Accel Y abnormal
+
+It might mean:
+
+Heat causing structural stress in that direction
+
+That’s real spacecraft interpretation.
+
+“Each sensor measures physical behaviour of the spacecraft in a specific spatial direction.
+X, Y, Z axes allow us to detect directional heat imbalance, vibration patterns, landing shocks, and structural drift.
+Using multiple axes gives spatial understanding of spacecraft health, which our AI models learn automatically.”
