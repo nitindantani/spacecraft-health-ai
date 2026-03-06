@@ -17,27 +17,28 @@ class InferenceManager:
                  window_size=128):
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         self.weights_dir = weights_dir
         self.window_size = window_size
 
         self.scaler = joblib.load(scaler_path)
-        self.models = {}
 
+        self.sensor_names = [
+            "xTemp",
+            "zTemp",
+            "yTemp",
+            "X Coarse Acceleration",
+            "Y Coarse Acceleration",
+            "Z Coarse Acceleration",
+            "X Fine Acceleration",
+            "Y Fine Acceleration",
+            "Z Fine Acceleration"
+        ]
+
+        self.models = {}
         self._load_models()
 
-    # ----------------------------------------------------
-    # Load Models
-    # ----------------------------------------------------
     def _load_models(self):
-
-        cnn = CNNAutoencoder()
-        cnn.load_state_dict(
-            torch.load(os.path.join(self.weights_dir, "best_cnn.pt"),
-                       map_location=self.device)
-        )
-        cnn.to(self.device)
-        cnn.eval()
-        self.models["cnn"] = cnn
 
         lstm = LSTMAutoencoder()
         lstm.load_state_dict(
@@ -47,6 +48,15 @@ class InferenceManager:
         lstm.to(self.device)
         lstm.eval()
         self.models["lstm"] = lstm
+
+        cnn = CNNAutoencoder()
+        cnn.load_state_dict(
+            torch.load(os.path.join(self.weights_dir, "best_cnn.pt"),
+                       map_location=self.device)
+        )
+        cnn.to(self.device)
+        cnn.eval()
+        self.models["cnn"] = cnn
 
         transformer = TransformerAutoencoder()
         transformer.load_state_dict(
@@ -66,76 +76,47 @@ class InferenceManager:
         gnn.eval()
         self.models["gnn"] = gnn
 
-    # ----------------------------------------------------
-    # Create Sliding Windows
-    # ----------------------------------------------------
     def create_windows(self, data):
 
         windows = []
+
         for i in range(len(data) - self.window_size + 1):
             windows.append(data[i:i + self.window_size])
 
         return np.array(windows)
 
-    # ----------------------------------------------------
-    # Predict (Memory Safe)
-    # ----------------------------------------------------
     def predict(self, model_name, data_array):
-
-        if model_name not in self.models:
-            raise ValueError(f"Model '{model_name}' not found.")
 
         model = self.models[model_name]
 
         data_scaled = self.scaler.transform(data_array)
 
-        # ---------------- Sequence Models ----------------
-        if model_name in ["lstm", "transformer", "cnn"]:
+        windows = self.create_windows(data_scaled)
 
-            windows = self.create_windows(data_scaled)
+        if len(windows) == 0:
+            raise ValueError("Not enough data for inference window.")
 
-            if len(windows) == 0:
-                raise ValueError(
-                    f"Not enough data for window size {self.window_size}."
-                )
+        input_tensor = torch.tensor(
+            windows,
+            dtype=torch.float32
+        ).to(self.device)
 
-            batch_size = 512
-            total_error = 0.0
-            total_count = 0
+        with torch.no_grad():
 
-            for i in range(0, len(windows), batch_size):
+            output = model(input_tensor)
 
-                batch = windows[i:i + batch_size]
+            error = (output - input_tensor) ** 2
 
-                input_tensor = torch.tensor(
-                    batch, dtype=torch.float32
-                ).to(self.device)
+            # mean error per sensor
+            sensor_error = torch.mean(error, dim=(0, 1))
 
-                with torch.no_grad():
-                    output = model(input_tensor)
+            sensor_error = sensor_error.cpu().numpy()
 
-                    error = torch.mean(
-                        (output - input_tensor) ** 2,
-                        dim=(1, 2)
-                    )
+            overall_score = float(sensor_error.mean())
 
-                total_error += torch.sum(error).item()
-                total_count += len(error)
+        sensor_errors = dict(zip(self.sensor_names, sensor_error))
 
-                del input_tensor
-                del output
-                torch.cuda.empty_cache()
-
-            return total_error / total_count
-
-        # ---------------- GNN ----------------
-        elif model_name == "gnn":
-
-            input_tensor = torch.tensor(
-                data_scaled, dtype=torch.float32
-            ).to(self.device)
-
-            with torch.no_grad():
-                output = model(input_tensor)
-
-            return torch.mean(output).item()
+        return {
+            "overall_score": overall_score,
+            "sensor_errors": sensor_errors
+        }
