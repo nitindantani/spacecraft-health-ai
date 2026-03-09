@@ -1,11 +1,24 @@
-from openai import OpenAI
+import requests
+import numpy as np
+
+def clean_dict(d):
+    return {k: float(v) if isinstance(v, (np.float32, np.float64)) else v for k, v in d.items()}
+
+def format_sensor_values(sensor_dict):
+
+    formatted = {}
+
+    for k, v in sensor_dict.items():
+        formatted[k] = round(float(v), 6)
+
+    return formatted
 
 class AIReasoner:
 
     def __init__(self, state_manager):
 
         self.state_manager = state_manager
-        self.client = OpenAI()
+        self.url = "http://localhost:11434/api/generate"
 
     def answer(self, question):
 
@@ -14,21 +27,29 @@ class AIReasoner:
         prompt = f"""
 You are an AI spacecraft monitoring assistant.
 
-Mission state:
-Status: {state['status']}
+Mission status: {state['status']}
 Anomaly score: {state['score']}
-Sensor errors: {state['sensors']}
-Subsystem status: {state['subsystems']}
+sensors = clean_dict(state["sensors"])
 
-User question:
+Sensor errors:
+{format_sensor_values(state["sensors"])}
+
+Subsystem status:
+{state['subsystems']}
+
+Answer the operator question clearly.
+
+Operator question:
 {question}
-
-Explain the spacecraft condition clearly.
 """
 
-        response = self.client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}]
+        response = requests.post(
+            self.url,
+            json={
+                "model": "llama3",
+                "prompt": prompt,
+                "stream": False
+            }
         )
 
-        return response.choices[0].message.content
+        return response.json()["response"]

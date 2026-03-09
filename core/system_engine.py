@@ -2,26 +2,24 @@ import threading
 
 from core.monitoring_service import MonitoringService
 from core.mission_state_manager import MissionStateManager
-from core.mission_assistant import MissionAssistant
 from core.ai_reasoner import AIReasoner
+
 
 class MissionSystem:
 
     def __init__(self, data_root):
 
-        self.reasoner = AIReasoner(self.state_manager)
-
-        # Central state
+        # 1️⃣ Create central mission state
         self.state_manager = MissionStateManager()
 
-        # Monitoring engine
+        # 2️⃣ Monitoring engine
         self.monitoring = MonitoringService(
             data_root=data_root,
             state_manager=self.state_manager
         )
 
-        # AI assistant
-        self.assistant = MissionAssistant(self.state_manager)
+        # 3️⃣ AI reasoning layer
+        self.reasoner = AIReasoner(self.state_manager)
 
     def start_monitoring(self):
 
@@ -34,4 +32,5 @@ class MissionSystem:
 
     def ask(self, question):
 
-        return self.assistant.answer(question)
+        # Send question to AI reasoning system
+        return self.reasoner.answer(question)
