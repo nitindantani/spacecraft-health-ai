@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spacecraft Health AI — Mission Control</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;600;700;900&family=Exo+2:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-void: #020508;
+    --bg-panel: #070f1a;
+    --border: rgba(0,180,255,0.15);
+    --border-bright: rgba(0,180,255,0.4);
+    --cyan: #00b4ff;
+    --cyan-dim: #0077aa;
+    --cyan-glow: rgba(0,180,255,0.25);
+    --green: #00ff88;
+    --green-dim: #00aa55;
+    --green-glow: rgba(0,255,136,0.2);
+    --amber: #ffaa00;
+    --amber-glow: rgba(255,170,0,0.2);
+    --red: #ff3355;
+    --red-glow: rgba(255,51,85,0.25);
+    --purple: #aa44ff;
+    --text-primary: #c8e8ff;
+    --text-secondary: #4a7a99;
+    --text-label: #2a5a77;
+    --font-mono: 'Share Tech Mono', monospace;
+    --font-display: 'Orbitron', sans-serif;
+    --font-body: 'Exo 2', sans-serif;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:var(--bg-void); color:var(--text-primary); font-family:var(--font-body);
+    min-height:100vh; overflow-x:hidden;
+    background-image:
+      radial-gradient(ellipse 80% 40% at 50% 0%, rgba(0,60,100,0.3) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 60% at 0% 50%, rgba(0,40,80,0.15) 0%, transparent 60%);
+  }
+  body::before {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:1000;
+    background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);
+  }
+  .starfield { position:fixed; inset:0; pointer-events:none; z-index:0; }
+  .star { position:absolute; border-radius:50%; background:white; animation:twinkle var(--d,3s) ease-in-out infinite alternate; }
+  @keyframes twinkle { from{opacity:var(--o1,.1)} to{opacity:var(--o2,.6)} }
+  .wrapper { position:relative; z-index:1; display:grid; grid-template-rows:auto 1fr auto; min-height:100vh; padding:0 14px 14px; gap:10px; }
+
+  /* ── HEADER ── */
+  header {
+    padding:12px 0 10px; display:grid; grid-template-columns:1fr auto 1fr;
+    align-items:center; border-bottom:1px solid var(--border); position:relative;
+  }
+  header::after {
+    content:''; position:absolute; bottom:-1px; left:50%; transform:translateX(-50%);
+    width:200px; height:1px; background:var(--cyan);
+    box-shadow:0 0 20px var(--cyan),0 0 40px var(--cyan-glow);
+  }
+  .hdr-left { display:flex; flex-direction:column; gap:3px; }
+  .hdr-id   { font-family:var(--font-mono); font-size:9px; color:var(--cyan-dim); letter-spacing:3px; }
+  .hdr-sub  { font-family:var(--font-display); font-size:10px; font-weight:600; color:var(--text-secondary); letter-spacing:2px; }
+  .hdr-center { text-align:center; }
+  .main-title {
+    font-family:var(--font-display); font-size:18px; font-weight:900;
+    letter-spacing:5px; color:var(--cyan);
+    text-shadow:0 0 20px var(--cyan),0 0 60px var(--cyan-glow);
+    animation:titlePulse 4s ease-in-out infinite;
+  }
+  @keyframes titlePulse {
+    0%,100%{text-shadow:0 0 20px var(--cyan),0 0 60px var(--cyan-glow)}
+    50%{text-shadow:0 0 30px var(--cyan),0 0 80px var(--cyan-glow),0 0 120px rgba(0,180,255,0.1)}
+  }
+  .sub-title { font-family:var(--font-mono); font-size:8px; letter-spacing:7px; color:var(--text-label); margin-top:4px; }
+  .hdr-right { display:flex; justify-content:flex-end; align-items:center; gap:16px; }
+  .ws-badge {
+    display:flex; align-items:center; gap:7px;
+    font-family:var(--font-mono); font-size:9px; letter-spacing:2px;
+  }
+  .ws-dot {
+    width:8px; height:8px; border-radius:50%;
+    background:var(--red); box-shadow:0 0 8px var(--red);
+    animation:blinkFast 0.8s ease-in-out infinite;
+  }
+  .ws-dot.live    { background:var(--green); box-shadow:0 0 8px var(--green),0 0 16px var(--green-glow); animation:blinkSlow 2s ease-in-out infinite; }
+  .ws-dot.warning { background:var(--amber); box-shadow:0 0 8px var(--amber),0 0 16px var(--amber-glow); animation:blinkFast 0.5s ease-in-out infinite; }
+  .ws-dot.critical{ background:var(--red);   box-shadow:0 0 8px var(--red),  0 0 16px var(--red-glow);   animation:blinkFast 0.3s ease-in-out infinite; }
+  @keyframes blinkFast { 0%,100%{opacity:1} 50%{opacity:0.15} }
+  @keyframes blinkSlow { 0%,100%{opacity:1} 50%{opacity:0.5} }
+  .live-clock { font-family:var(--font-mono); font-size:12px; color:var(--cyan); letter-spacing:2px; }
+
+  /* ── LAYOUT ── */
+  .main-grid { display:grid; grid-template-columns:255px 1fr 275px; gap:10px; align-items:start; }
+
+  /* ── PANEL ── */
+  .panel {
+    background:var(--bg-panel); border:1px solid var(--border); border-radius:4px;
+    padding:13px; position:relative; overflow:hidden;
+    animation:panelIn 0.5s ease both; transition:border-color 0.3s;
+  }
+  .panel::before { content:''; position:absolute; inset:0; background:linear-gradient(135deg,rgba(0,180,255,0.03) 0%,transparent 60%); pointer-events:none; }
+  .panel:hover { border-color:var(--border-bright); }
+  @keyframes panelIn { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
+
+  /* corner brackets */
+  .k { position:absolute; width:9px; height:9px; border-color:var(--cyan); border-style:solid; }
+  .tl{top:0;left:0;border-width:1px 0 0 1px} .tr{top:0;right:0;border-width:1px 1px 0 0}
+  .bl{bottom:0;left:0;border-width:0 0 1px 1px} .br{bottom:0;right:0;border-width:0 1px 1px 0}
+
+  .ptitle {
+    font-family:var(--font-display); font-size:8px; font-weight:700;
+    letter-spacing:4px; color:var(--cyan-dim); margin-bottom:11px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .ptitle::after { content:''; flex:1; height:1px; background:linear-gradient(to right,var(--border),transparent); }
+
+  /* ── LEFT ── */
+  .left-col { display:flex; flex-direction:column; gap:10px; }
+
+  .sc-wrap { position:relative; height:182px; display:flex; align-items:center; justify-content:center; }
+  .sc-svg { width:152px; filter:drop-shadow(0 0 8px rgba(0,180,255,0.4)); animation:scPulse 3s ease-in-out infinite; }
+  @keyframes scPulse {
+    0%,100%{filter:drop-shadow(0 0 8px rgba(0,180,255,0.4))}
+    50%{filter:drop-shadow(0 0 20px rgba(0,180,255,0.8)) drop-shadow(0 0 40px rgba(0,180,255,0.3))}
+  }
+  .orbit-ring { position:absolute; border:1px solid rgba(0,180,255,0.08); border-radius:50%; }
+  .orbit-ring:nth-child(1){width:192px;height:74px;animation:orb 20s linear infinite;}
+  .orbit-ring:nth-child(2){width:220px;height:94px;animation:orb 30s linear infinite reverse;border-color:rgba(0,180,255,0.05);}
+  @keyframes orb{from{transform:rotateX(70deg) rotate(0)}to{transform:rotateX(70deg) rotate(360deg)}}
+
+  /* Subsystems */
+  .sub-list  { display:flex; flex-direction:column; gap:7px; }
+  .sub-item  { display:grid; grid-template-columns:1fr auto; gap:4px; align-items:center; }
+  .sub-name  { font-family:var(--font-mono); font-size:9px; color:var(--text-secondary); letter-spacing:1px; margin-bottom:3px; }
+  .sub-track { height:4px; background:rgba(0,0,0,0.4); border-radius:2px; overflow:hidden; border:1px solid rgba(0,180,255,0.07); }
+  .sub-fill  { height:100%; border-radius:2px; transition:width 0.8s ease; }
+  .sub-fill.g{background:linear-gradient(to right,var(--green-dim),var(--green));box-shadow:0 0 6px var(--green-glow);}
+  .sub-fill.a{background:linear-gradient(to right,#aa6600,var(--amber));box-shadow:0 0 6px var(--amber-glow);}
+  .sub-fill.r{background:linear-gradient(to right,#aa0022,var(--red));box-shadow:0 0 6px var(--red-glow);}
+  .sub-pct { font-family:var(--font-mono); font-size:9px; }
+  .sub-pct.g{color:var(--green)} .sub-pct.a{color:var(--amber)} .sub-pct.r{color:var(--red)}
+
+  /* Sensor table */
+  .s-tbl { width:100%; border-collapse:collapse; font-family:var(--font-mono); font-size:9px; }
+  .s-tbl th { color:var(--text-label); letter-spacing:2px; padding:4px 6px; border-bottom:1px solid var(--border); text-align:left; }
+  .s-tbl td { padding:3px 6px; border-bottom:1px solid rgba(0,180,255,0.04); color:var(--text-secondary); }
+  .s-tbl td:last-child { color:var(--cyan); text-align:right; }
+  .s-tbl tr:hover td { background:rgba(0,180,255,0.03); }
+
+  /* ── CENTER ── */
+  .center-col { display:flex; flex-direction:column; gap:10px; }
+
+  /* Stat cards */
+  .stat-row { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .stat-card {
+    background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:3px;
+    padding:10px; text-align:center; transition:border-color 0.3s;
+  }
+  .stat-card:hover { border-color:var(--border-bright); }
+  .stat-lbl { font-family:var(--font-mono); font-size:7px; color:var(--text-label); letter-spacing:2px; margin-bottom:5px; }
+  .stat-val { font-family:var(--font-display); font-size:15px; font-weight:700; line-height:1; }
+  .stat-val.g{color:var(--green);text-shadow:0 0 10px var(--green-glow)}
+  .stat-val.a{color:var(--amber);text-shadow:0 0 10px var(--amber-glow)}
+  .stat-val.r{color:var(--red);text-shadow:0 0 10px var(--red-glow)}
+  .stat-val.c{color:var(--cyan);text-shadow:0 0 10px var(--cyan-glow)}
+  .stat-sub { font-family:var(--font-mono); font-size:7px; color:var(--text-label); margin-top:4px; }
+
+  /* Charts */
+  .chart-wrap { position:relative; }
+  .chart-wrap canvas { width:100%!important; }
+  .chart-legend { display:flex; gap:12px; margin-top:6px; flex-wrap:wrap; }
+  .chart-legend span { font-family:var(--font-mono); font-size:8px; }
+
+  /* Anomaly feed */
+  .anom-scroll { max-height:175px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+  .anom-row {
+    display:grid; grid-template-columns:7px 68px 1fr 70px; gap:8px; align-items:center;
+    padding:6px 6px; border-bottom:1px solid rgba(0,180,255,0.04);
+    font-family:var(--font-mono); font-size:8px; animation:fadeIn 0.4s ease;
+  }
+  @keyframes fadeIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+  .anom-row:hover { background:rgba(0,180,255,0.03); }
+  .sev { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+  .sev.c{background:var(--red);box-shadow:0 0 5px var(--red)}
+  .sev.w{background:var(--amber);box-shadow:0 0 5px var(--amber)}
+  .sev.n{background:var(--green);box-shadow:0 0 5px var(--green)}
+  .a-time{color:var(--text-label)} .a-msg{color:var(--text-primary)} .a-sys{color:var(--cyan-dim);text-align:right}
+
+  /* ── AI PANEL ── */
+  .ai-models-row { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:10px; }
+  .model-chip {
+    background:rgba(0,0,0,0.4); border:1px solid var(--border); border-radius:3px;
+    padding:6px 8px; text-align:center; cursor:default;
+    font-family:var(--font-mono); font-size:8px; transition:all 0.3s;
+  }
+  .model-chip.active {
+    border-color:var(--cyan); background:rgba(0,180,255,0.1);
+    box-shadow:0 0 10px var(--cyan-glow);
+  }
+  .model-chip.active.lstm  { border-color:var(--cyan);   background:rgba(0,180,255,0.1);  }
+  .model-chip.active.cnn   { border-color:var(--green);  background:rgba(0,255,136,0.08); box-shadow:0 0 10px var(--green-glow); }
+  .model-chip.active.trans { border-color:var(--amber);  background:rgba(255,170,0,0.08); box-shadow:0 0 10px var(--amber-glow); }
+  .model-chip.active.gnn   { border-color:var(--purple); background:rgba(170,68,255,0.08);box-shadow:0 0 10px rgba(170,68,255,0.2); }
+  .model-name { letter-spacing:2px; font-weight:700; }
+  .model-trigger { font-size:7px; color:var(--text-label); margin-top:2px; letter-spacing:1px; }
+
+  .ai-out {
+    background:rgba(0,0,0,0.45); border:1px solid var(--border); border-radius:3px;
+    padding:10px; min-height:80px; max-height:130px; overflow-y:auto;
+    font-family:var(--font-mono); font-size:9px; line-height:1.7; margin-bottom:8px;
+    scrollbar-width:thin; scrollbar-color:var(--border) transparent;
+  }
+  .ai-typing::after { content:'█'; animation:cur 0.8s step-end infinite; color:var(--cyan); }
+  @keyframes cur{0%,100%{opacity:1}50%{opacity:0}}
+
+  .ai-input-row { display:flex; gap:6px; align-items:stretch; }
+  .ai-pfx { font-family:var(--font-mono); font-size:12px; color:var(--cyan); display:flex; align-items:center; padding:0 3px; flex-shrink:0; }
+  .ai-input {
+    flex:1; background:rgba(0,0,0,0.5); border:1px solid var(--border); border-radius:3px;
+    color:var(--text-primary); font-family:var(--font-mono); font-size:9px;
+    padding:7px 10px; outline:none; letter-spacing:1px; transition:border-color 0.2s,box-shadow 0.2s;
+  }
+  .ai-input:focus { border-color:var(--cyan-dim); box-shadow:0 0 10px rgba(0,180,255,0.1); }
+  .ai-input::placeholder { color:var(--text-label); }
+  .ai-btn {
+    background:rgba(0,180,255,0.1); border:1px solid var(--border-bright); border-radius:3px;
+    color:var(--cyan); font-family:var(--font-display); font-size:7px; font-weight:700;
+    letter-spacing:2px; padding:7px 12px; cursor:pointer; transition:all 0.2s; white-space:nowrap;
+  }
+  .ai-btn:hover { background:rgba(0,180,255,0.2); box-shadow:0 0 12px var(--cyan-glow); border-color:var(--cyan); }
+  .ai-btn:disabled { opacity:0.4; cursor:not-allowed; }
+
+  .chips { display:flex; flex-wrap:wrap; gap:4px; margin-top:7px; }
+  .chip {
+    font-family:var(--font-mono); font-size:7px; color:var(--text-secondary);
+    border:1px solid var(--border); border-radius:2px; padding:3px 7px;
+    cursor:pointer; transition:all 0.2s; background:rgba(0,0,0,0.3);
+  }
+  .chip:hover { color:var(--cyan); border-color:var(--cyan-dim); background:rgba(0,180,255,0.05); }
+
+  /* ── RIGHT ── */
+  .right-col { display:flex; flex-direction:column; gap:10px; }
+
+  /* Health ring */
+  .ring-wrap { display:flex; flex-direction:column; align-items:center; padding:8px 0; }
+  .ring-svg-wrap { position:relative; width:128px; height:128px; margin-bottom:10px; }
+  .ring-svg-wrap svg { width:128px; height:128px; transform:rotate(-90deg); }
+  .ring-bg { fill:none; stroke:rgba(0,180,255,0.08); stroke-width:8; }
+  .ring-fg { fill:none; stroke-width:8; stroke-linecap:round; stroke-dasharray:327; transition:stroke-dashoffset 1s ease,stroke 0.5s ease; }
+  .ring-inner { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .ring-num    { font-family:var(--font-display); font-size:28px; font-weight:900; line-height:1; }
+  .ring-lbl    { font-family:var(--font-mono); font-size:7px; color:var(--text-label); letter-spacing:2px; margin-top:3px; }
+  .ring-status { font-family:var(--font-display); font-size:9px; font-weight:700; letter-spacing:3px; }
+  .ring-sub    { font-family:var(--font-mono); font-size:8px; color:var(--text-label); margin-top:4px; }
+
+  /* Score history */
+  .score-history { height:60px; position:relative; }
+
+  /* Model output cards */
+  .model-outputs { display:flex; flex-direction:column; gap:6px; }
+  .model-out-card {
+    background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:3px; padding:8px;
+    font-family:var(--font-mono); font-size:8px; transition:border-color 0.3s;
+  }
+  .model-out-card.active-card { border-color:var(--cyan-dim); }
+  .model-out-header { display:flex; justify-content:space-between; margin-bottom:5px; }
+  .model-out-name { color:var(--cyan); letter-spacing:2px; font-size:8px; }
+  .model-out-badge { font-size:7px; padding:1px 5px; border-radius:2px; letter-spacing:1px; }
+  .badge-normal   { background:rgba(0,255,136,0.15); color:var(--green); }
+  .badge-anomaly  { background:rgba(255,51,85,0.15);  color:var(--red); }
+  .badge-warning  { background:rgba(255,170,0,0.15); color:var(--amber); }
+  .model-out-val { color:var(--text-primary); line-height:1.5; }
+
+  /* Session stats */
+  .mini-stats { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .mini-stat { background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:3px; padding:7px; }
+  .mini-stat-lbl { font-family:var(--font-mono); font-size:7px; color:var(--text-label); letter-spacing:1px; margin-bottom:3px; }
+  .mini-stat-val { font-family:var(--font-mono); font-size:13px; color:var(--cyan); }
+
+  /* ── FOOTER ── */
+  footer { border-top:1px solid var(--border); padding:7px 0; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+  .f-stat { display:flex; align-items:center; gap:5px; font-family:var(--font-mono); font-size:8px; color:var(--text-secondary); white-space:nowrap; }
+  .f-val  { color:var(--cyan); }
+  .f-div  { width:1px; height:18px; background:var(--border); flex-shrink:0; }
+  .met    { font-family:var(--font-display); font-size:8px; letter-spacing:3px; color:var(--text-label); }
+  .met span { color:var(--amber); font-weight:700; }
+
+  ::-webkit-scrollbar{width:3px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+</style>
+</head>
+<body>
+<div class="starfield" id="sf"></div>
+<div class="wrapper">
+
+  <!-- ══ HEADER ══ -->
+  <header>
+    <div class="hdr-left">
+      <div class="hdr-id">MISSION // CH3-ILSA · PORT 9000</div>
+      <div class="hdr-sub">CHANDRAYAAN-3 · ILSA SEISMOMETER</div>
+    </div>
+    <div class="hdr-center">
+      <div class="main-title">SPACECRAFT HEALTH AI</div>
+      <div class="sub-title">AUTONOMOUS MISSION CONTROL · LSTM · CNN · TRANSFORMER · GNN</div>
+    </div>
+    <div class="hdr-right">
+      <div class="ws-badge">
+        <div class="ws-dot" id="wsDot"></div>
+        <span id="wsLabel" style="color:var(--red);">CONNECTING…</span>
+      </div>
+      <div class="live-clock" id="clock">00:00:00 UTC</div>
+    </div>
+  </header>
+
+  <!-- ══ MAIN ══ -->
+  <div class="main-grid">
+
+    <!-- ═ LEFT ═ -->
+    <div class="left-col">
+
+      <!-- Spacecraft diagram -->
+      <div class="panel">
+        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+        <div class="ptitle">CHANDRAYAAN-3 · ILSA PAYLOAD</div>
+        <div class="sc-wrap">
+          <div class="orbit-ring"></div><div class="orbit-ring"></div>
+          <svg class="sc-svg" viewBox="0 0 160 120" fill="none">
+            <!-- Solar panels -->
+            <rect x="5"   y="48" width="40" height="24" rx="2" fill="rgba(0,80,140,0.8)" stroke="#0077aa" stroke-width="1"/>
+            <line x1="15" y1="48" x2="15" y2="72" stroke="#003355" stroke-width="0.5"/>
+            <line x1="25" y1="48" x2="25" y2="72" stroke="#003355" stroke-width="0.5"/>
+            <line x1="35" y1="48" x2="35" y2="72" stroke="#003355" stroke-width="0.5"/>
+            <rect x="115" y="48" width="40" height="24" rx="2" fill="rgba(0,80,140,0.8)" stroke="#0077aa" stroke-width="1"/>
+            <line x1="125" y1="48" x2="125" y2="72" stroke="#003355" stroke-width="0.5"/>
+            <line x1="135" y1="48" x2="135" y2="72" stroke="#003355" stroke-width="0.5"/>
+            <line x1="145" y1="48" x2="145" y2="72" stroke="#003355" stroke-width="0.5"/>
+            <!-- Arms -->
+            <rect x="45" y="58" width="20" height="4" fill="#0a2030"/>
+            <rect x="95" y="58" width="20" height="4" fill="#0a2030"/>
+            <!-- Body -->
+            <rect x="55" y="28" width="50" height="64" rx="4" fill="#0a1a2a" stroke="#00b4ff" stroke-width="1.5"/>
+            <rect x="60" y="33" width="40" height="22" rx="2" fill="rgba(0,60,100,0.5)" stroke="#0077aa" stroke-width="0.5"/>
+            <!-- ILSA seismometer label -->
+            <text x="80" y="63" text-anchor="middle" fill="#0077aa" font-size="5" font-family="monospace">ILSA</text>
+            <rect x="63" y="67" width="34" height="18" rx="1" fill="rgba(0,40,80,0.6)" stroke="#005588" stroke-width="0.5"/>
+            <!-- Engine -->
+            <ellipse cx="80" cy="94" rx="8" ry="4" fill="rgba(0,180,255,0.2)" stroke="#00b4ff" stroke-width="0.5"/>
+            <!-- Antenna -->
+            <line x1="80" y1="28" x2="80" y2="14" stroke="#00b4ff" stroke-width="1"/>
+            <circle cx="80" cy="12" r="4" fill="none" stroke="#00b4ff" stroke-width="1"/>
+            <!-- Status LEDs -->
+            <circle cx="64" cy="40" r="2" fill="#00ff88" opacity="0.9"><animate attributeName="opacity" values="0.9;0.2;0.9" dur="2s" repeatCount="indefinite"/></circle>
+            <circle cx="80" cy="40" r="2" fill="#00b4ff" opacity="0.9"><animate attributeName="opacity" values="0.9;0.3;0.9" dur="1.5s" repeatCount="indefinite"/></circle>
+            <circle cx="96" cy="40" r="2" fill="#ffaa00" id="ledAnomaly" opacity="0.5"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Subsystem health bars — driven by anomaly_score -->
+      <div class="panel">
+        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+        <div class="ptitle">SUBSYSTEM HEALTH</div>
+        <div class="sub-list" id="subList"></div>
+      </div>
+
+      <!-- Live sensor table — all fields from data.sensors -->
+      <div class="panel">
+        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+        <div class="ptitle">TELEMETRY STREAM · ALL SENSORS</div>
+        <div style="max-height:200px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;">
+          <table class="s-tbl">
+            <thead><tr><th>SENSOR FIELD</th><th>VALUE</th></tr></thead>
+            <tbody id="sensorTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ═ CENTER ═ -->
+    <div class="center-col">
+
+      <!-- Live stat cards from WebSocket -->
+      <div class="panel" style="padding:12px;">
+        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+        <div class="stat-row">
+          <div class="stat-card">
+            <div class="stat-lbl">ANOMALY SCORE</div>
+            <div class="stat-val g" id="scoreVal">—</div>
+            <div class="stat-sub" id="scoreStatus" style="color:var(--text-label);">AWAITING DATA</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-lbl">xTemp</div>
+            <div class="stat-val c" id="xTempVal">—</div>
+            <div class="stat-sub">temperature X</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-lbl">yTemp · zTemp</div>
+            <div class="stat-val c" style="font-size:11px;" id="yzTempVal">— / —</div>
+            <div class="stat-sub">temperature Y · Z</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-lbl">FINE ACCEL Z</div>
+            <div class="stat-val a" id="fineZVal">—</div>
+            <div class="stat-sub">CNN vibration input</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Temperature chart: xTemp, yTemp, zTemp -->
+      <div class="panel">
+        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+        <div class="ptitle">TEMPERATURE SENSORS · xTemp / yTemp / zTemp</div>
+        <div class="chart-wrap" style="height:130px;"><canvas id="tempChart"></canvas></div>
+        <div class="chart-legend">
+          <span style="color:#00b4ff;">─ xTemp</span>
+          <span style="color:#00ff88;">─ yTemp</span>
+          <span style="color:#ffaa00;">─ zTemp</span>
+        </div>
+      </div>
+
+      <!-- Acceleration chart: all 6 acceleration fields -->
+      <div class="panel">
+        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+        <div class="ptitle">ACCELERATION · X/Y/Z FINE + COARSE</div>
+        <div class="chart-wrap" style="height:130px;"><canvas id="accChart"></canvas></div>
+        <div class="chart-legend">
+          <span style="color:#00b4ff;">─ Fine X</span>
+          <span style="color:#00ff88;">─ Fine Y</span>
+          <span style="color:#ffaa00;">─ Fine Z (CNN input)</span>
+          <span style="color:#aa44ff;">─ Coarse X</span>
+          <span style="color:#ff6644;">─ Coarse Y</span>
+          <span style="color:#44ffcc;">─ Coarse Z</span>
+        </div>
+      </div>
+
+      <!-- Anomaly event feed -->
+      <div class="panel">
+        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+        <div class="ptitle">ANOMALY DETECTION FEED</div>
+        <div class="anom-scroll" id="anomFeed">
+          <div class="anom-row">
+            <div class="sev n"></div>
+            <span class="a-time">—</span>
+            <span class="a-msg" style="color:var(--text-label);">Awaiting telemetry stream…</span>
+            <span class="a-sys">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Copilot — calls /ask, shows which model ran -->
+      <div class="panel">
+        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+        <div class="ptitle">AI COPILOT · /ask · OLLAMA llama3</div>
+
+        <!-- Model indicator row — shows which model is active for query -->
+        <div class="ai-models-row">
+          <div class="model-chip lstm" id="chip_lstm">
+            <div class="model-name" style="color:var(--cyan);">LSTM</div>
+            <div class="model-trigger">anomaly</div>
+          </div>
+          <div class="model-chip cnn" id="chip_cnn">
+            <div class="model-name" style="color:var(--green);">CNN</div>
+            <div class="model-trigger">pattern</div>
+          </div>
+          <div class="model-chip trans" id="chip_trans">
+            <div class="model-name" style="color:var(--amber);">TRANSFORMER</div>
+            <div class="model-trigger">predict</div>
+          </div>
+          <div class="model-chip gnn" id="chip_gnn">
+            <div class="model-name" style="color:var(--purple);">GNN</div>
+            <div class="model-trigger">cause</div>
+          </div>
+        </div>
+
+        <div class="ai-out" id="aiOut">
+          <span style="color:var(--text-label);">// AI COPILOT ONLINE — Ollama llama3 via /ask endpoint.</span><br>
+          <span style="color:var(--cyan-dim);">// Keywords route to models: "anomaly"→LSTM · "pattern"→CNN · "predict"→Transformer · "cause"→GNN</span>
+        </div>
+        <div class="ai-input-row">
+          <div class="ai-pfx">&gt;_</div>
+          <input class="ai-input" id="aiIn" type="text" placeholder="Ask about anomaly, pattern, prediction, or cause…" autocomplete="off">
+          <button class="ai-btn" id="aiBtn">QUERY</button>
+        </div>
+        <div class="chips">
+          <span class="chip" onclick="askAI('Is there an anomaly in the current sensor data?')">Anomaly? (LSTM)</span>
+          <span class="chip" onclick="askAI('What vibration pattern is detected?')">Pattern (CNN)</span>
+          <span class="chip" onclick="askAI('Predict the next temperature reading')">Predict (Transformer)</span>
+          <span class="chip" onclick="askAI('What is the cause of this anomaly?')">Cause (GNN)</span>
+          <span class="chip" onclick="askAI('Summarize the current mission health status')">Mission summary</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ═ RIGHT ═ -->
+    <div class="right-col">
+
+      <!-- Health ring — derived from anomaly_score -->
+      <div class="panel">
+        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+        <div class="ptitle">HEALTH INDEX</div>
+        <div class="ring-wrap">
+          <div class="ring-svg-wrap">
+            <svg viewBox="0 0 128 128">
+              <circle class="ring-bg" cx="64" cy="64" r="52"/>
+              <circle class="ring-fg" id="ringFg" cx="64" cy="64" r="52"
+                stroke="var(--green)"
+                style="stroke-dashoffset:33;filter:drop-shadow(0 0 6px var(--green))"/>
+            </svg>
+            <div class="ring-inner">
+              <div class="ring-num" id="ringNum" style="color:var(--green);">—</div>
+              <div class="ring-lbl">HEALTH INDEX</div>
+            </div>
+          </div>
+          <div class="ring-status" id="ringStatus" style="color:var(--green);">AWAITING</div>
+          <div class="ring-sub" id="ringTime">Last update: —</div>
+        </div>
+      </div>
+
+      <!-- Anomaly score sparkline -->
+      <div class="panel">
+        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+        <div class="ptitle">ANOMALY SCORE · HISTORY</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-label);">threshold: <span style="color:var(--amber);">0.05</span> warn · <span style="color:var(--red);">0.20</span> crit</span>
+          <span style="font-family:var(--font-mono);font-size:10px;" id="scoreSparkVal">—</span>
+        </div>
+        <div class="score-history"><canvas id="scoreChart"></canvas></div>
+      </div>
+
+      <!-- Model outputs — live results from each model on each packet -->
+      <div class="panel">
+        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+        <div class="ptitle">MODEL OUTPUTS · LIVE</div>
+        <div class="model-outputs">
+          <div class="model-out-card" id="out_lstm">
+            <div class="model-out-header">
+              <span class="model-out-name" style="color:var(--cyan);">LSTM</span>
+              <span class="model-out-badge badge-normal" id="badge_lstm">NORMAL</span>
+            </div>
+            <div class="model-out-val" id="val_lstm">Awaiting data…</div>
+          </div>
+          <div class="model-out-card" id="out_cnn">
+            <div class="model-out-header">
+              <span class="model-out-name" style="color:var(--green);">CNN</span>
+              <span class="model-out-badge badge-normal" id="badge_cnn">NORMAL</span>
+            </div>
+            <div class="model-out-val" id="val_cnn">Awaiting data…</div>
+          </div>
+          <div class="model-out-card" id="out_trans">
+            <div class="model-out-header">
+              <span class="model-out-name" style="color:var(--amber);">TRANSFORMER</span>
+              <span class="model-out-badge badge-normal" id="badge_trans">NORMAL</span>
+            </div>
+            <div class="model-out-val" id="val_trans">Awaiting data…</div>
+          </div>
+          <div class="model-out-card" id="out_gnn">
+            <div class="model-out-header">
+              <span class="model-out-name" style="color:var(--purple);">GNN</span>
+              <span class="model-out-badge badge-normal" id="badge_gnn">STRUCT</span>
+            </div>
+            <div class="model-out-val" id="val_gnn">Awaiting data…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Session stats -->
+      <div class="panel">
+        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+        <div class="ptitle">SESSION STATS</div>
+        <div class="mini-stats">
+          <div class="mini-stat"><div class="mini-stat-lbl">PACKETS RX</div><div class="mini-stat-val" id="pktCount">0</div></div>
+          <div class="mini-stat"><div class="mini-stat-lbl">EVENTS</div><div class="mini-stat-val" id="anomCount">0</div></div>
+          <div class="mini-stat"><div class="mini-stat-lbl">CRITICALS</div><div class="mini-stat-val" id="critCount" style="color:var(--red);">0</div></div>
+          <div class="mini-stat"><div class="mini-stat-lbl">WARNINGS</div><div class="mini-stat-val" id="warnCount" style="color:var(--amber);">0</div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ FOOTER ══ -->
+  <footer>
+    <div class="f-stat">WEBSOCKET <span class="f-val" style="margin-left:4px;">ws://127.0.0.1:9000/telemetry</span></div>
+    <div class="f-div"></div>
+    <div class="f-stat">AI <span class="f-val" style="margin-left:4px;">GET /ask?question= · Ollama llama3</span></div>
+    <div class="f-div"></div>
+    <div class="f-stat">DATASET <span class="f-val" style="margin-left:4px;">CH3-ILSA Calibrated CSVs</span></div>
+    <div class="f-div"></div>
+    <div class="met">SESSION &nbsp;<span id="met">00d 00h 00m 00s</span></div>
+    <div class="f-div"></div>
+    <div class="f-stat">LAST PACKET <span class="f-val" style="margin-left:4px;" id="lastPkt">—</span></div>
+    <div class="f-div"></div>
+    <div class="f-stat">MODELS <span class="f-val" style="margin-left:4px;">LSTM · CNN · TRANSFORMER · GNN</span></div>
+  </footer>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+
+// ══════════════════════════════════════════════════
+//  STARFIELD
+// ══════════════════════════════════════════════════
+(()=>{
+  const sf=document.getElementById('sf');
+  for(let i=0;i<100;i++){
+    const s=document.createElement('div');s.className='star';
+    const sz=Math.random()*1.4+0.3;
+    s.style.cssText=`width:${sz}px;height:${sz}px;left:${Math.random()*100}%;top:${Math.random()*100}%;--d:${(Math.random()*4+2).toFixed(1)}s;--o1:${(Math.random()*0.15+0.03).toFixed(2)};--o2:${(Math.random()*0.5+0.15).toFixed(2)};`;
+    sf.appendChild(s);
+  }
+})();
+
+// ══════════════════════════════════════════════════
+//  CLOCK + SESSION TIMER
+// ══════════════════════════════════════════════════
+setInterval(()=>{
+  document.getElementById('clock').textContent=
+    new Date().toUTCString().match(/\d\d:\d\d:\d\d/)[0]+' UTC';
+},1000);
+let sessionSec=0;
+setInterval(()=>{
+  sessionSec++;
+  const d=Math.floor(sessionSec/86400),h=Math.floor((sessionSec%86400)/3600),
+        m=Math.floor((sessionSec%3600)/60),s=sessionSec%60;
+  document.getElementById('met').textContent=
+    `${String(d).padStart(2,'0')}d ${String(h).padStart(2,'0')}h ${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s`;
+},1000);
+
+// ══════════════════════════════════════════════════
+//  CHARTS
+// ══════════════════════════════════════════════════
+const MAXPTS=200;
+const baseOpts={
+  animation:false,responsive:true,maintainAspectRatio:false,
+  interaction:{mode:'index',intersect:false},
+  plugins:{legend:{display:false},tooltip:{
+    backgroundColor:'rgba(5,13,20,0.95)',borderColor:'rgba(0,180,255,0.3)',borderWidth:1,
+    titleColor:'#4a7a99',bodyColor:'#c8e8ff',
+    titleFont:{family:"'Share Tech Mono'"},bodyFont:{family:"'Share Tech Mono'",size:9}
+  }},
+  scales:{
+    x:{display:false},
+    y:{grid:{color:'rgba(0,180,255,0.06)',drawBorder:false},
+       ticks:{color:'#2a5a77',font:{family:"'Share Tech Mono'",size:8}}}
+  }
+};
+
+// Temperature: xTemp, yTemp, zTemp — exact field names from data.sensors
+const tempChart=new Chart(document.getElementById('tempChart'),{
+  type:'line',
+  data:{labels:Array(MAXPTS).fill(''),datasets:[
+    {label:'xTemp', data:[],borderColor:'#00b4ff',borderWidth:1.5,fill:false,pointRadius:0,tension:0.4},
+    {label:'yTemp', data:[],borderColor:'#00ff88',borderWidth:1.5,fill:false,pointRadius:0,tension:0.4},
+    {label:'zTemp', data:[],borderColor:'#ffaa00',borderWidth:1.5,fill:false,pointRadius:0,tension:0.4},
+  ]},options:baseOpts
+});
+
+// Acceleration: all 6 fields — exact names from data.sensors
+const accChart=new Chart(document.getElementById('accChart'),{
+  type:'line',
+  data:{labels:Array(MAXPTS).fill(''),datasets:[
+    {label:'X Fine Acceleration', data:[],borderColor:'#00b4ff',borderWidth:1.5,fill:false,pointRadius:0,tension:0.4},
+    {label:'Y Fine Acceleration', data:[],borderColor:'#00ff88',borderWidth:1.5,fill:false,pointRadius:0,tension:0.4},
+    {label:'Z Fine Acceleration', data:[],borderColor:'#ffaa00',borderWidth:1.5,fill:false,pointRadius:0,tension:0.4},
+    {label:'X Coarse Acceleration',data:[],borderColor:'#aa44ff',borderWidth:1,fill:false,pointRadius:0,tension:0.4},
+    {label:'Y Coarse Acceleration',data:[],borderColor:'#ff6644',borderWidth:1,fill:false,pointRadius:0,tension:0.4},
+    {label:'Z Coarse Acceleration',data:[],borderColor:'#44ffcc',borderWidth:1,fill:false,pointRadius:0,tension:0.4},
+  ]},options:baseOpts
+});
+
+// Anomaly score history
+const scoreChart=new Chart(document.getElementById('scoreChart'),{
+  type:'line',
+  data:{labels:Array(MAXPTS).fill(''),datasets:[
+    {label:'Score',data:[],borderColor:'#ff3355',borderWidth:1.5,
+     fill:true,backgroundColor:'rgba(255,51,85,0.08)',pointRadius:0,tension:0.4},
+    // threshold lines drawn via annotation plugin would need extra dep — use data instead
+  ]},
+  options:{...baseOpts,scales:{...baseOpts.scales,y:{...baseOpts.scales.y,min:0,max:0.5}}}
+});
+
+function push(chart,i,val){
+  if(val==null||isNaN(val))return;
+  const d=chart.data.datasets[i].data;
+  d.push(val);if(d.length>MAXPTS)d.shift();
+}
+
+// ══════════════════════════════════════════════════
+//  SUBSYSTEMS — 5 bars, each slightly offset from score
+// ══════════════════════════════════════════════════
+const SUBS=[
+  {id:'sub_thermal',  name:'THERMAL CTRL',  offset:0.00},
+  {id:'sub_structure',name:'STRUCTURE',     offset:0.02},
+  {id:'sub_nav',      name:'NAVIGATION',    offset:-0.01},
+  {id:'sub_power',    name:'POWER SYSTEM',  offset:0.01},
+  {id:'sub_ilsa',     name:'ILSA PAYLOAD',  offset:-0.015},
+];
+const subList=document.getElementById('subList');
+SUBS.forEach(s=>{
+  subList.innerHTML+=`
+    <div class="sub-item">
+      <div>
+        <div class="sub-name">${s.name}</div>
+        <div class="sub-track"><div class="sub-fill g" id="${s.id}" style="width:100%"></div></div>
+      </div>
+      <div class="sub-pct g" id="${s.id}_p">100%</div>
+    </div>`;
+});
+
+function updateSubsystems(score){
+  SUBS.forEach(s=>{
+    const h=Math.max(0,Math.min(100,Math.round((1-Math.min(score+s.offset,1))*100)));
+    const cls=h>=70?'g':h>=40?'a':'r';
+    const el=document.getElementById(s.id); const p=document.getElementById(s.id+'_p');
+    el.style.width=h+'%'; el.className='sub-fill '+cls;
+    p.textContent=h+'%'; p.className='sub-pct '+cls;
+  });
+}
+
+// ══════════════════════════════════════════════════
+//  HEALTH RING
+// ══════════════════════════════════════════════════
+const CIRC=2*Math.PI*52;
+function updateRing(score){
+  const health=Math.round((1-Math.min(score,1))*100);
+  const offset=CIRC*(1-health/100);
+  const fg=document.getElementById('ringFg');
+  const color=score>0.2?'var(--red)':score>0.05?'var(--amber)':'var(--green)';
+  const txt=score>0.2?'CRITICAL':score>0.05?'WARNING':'NOMINAL';
+  fg.style.strokeDashoffset=offset; fg.style.stroke=color;
+  fg.style.filter=`drop-shadow(0 0 6px ${color})`;
+  const num=document.getElementById('ringNum');
+  num.textContent=health; num.style.color=color;
+  document.getElementById('ringStatus').textContent=txt;
+  document.getElementById('ringStatus').style.color=color;
+  document.getElementById('ringTime').textContent='Updated: '+new Date().toLocaleTimeString();
+}
+
+// ══════════════════════════════════════════════════
+//  MODEL OUTPUTS — mirror your ai_system.py logic client-side
+//  (shows same outputs LSTM/CNN/Transformer/GNN would give)
+// ══════════════════════════════════════════════════
+function updateModelOutputs(sensors, score){
+  // LSTM output (mirrors LSTMModel.run)
+  const lstmStatus=score>0.05?'ANOMALY':'NORMAL';
+  document.getElementById('badge_lstm').textContent=lstmStatus;
+  document.getElementById('badge_lstm').className='model-out-badge '+(score>0.05?'badge-anomaly':'badge-normal');
+  document.getElementById('val_lstm').textContent=`score: ${score.toFixed(4)} · status: ${lstmStatus} · xTemp: ${sensors.xTemp??'—'}`;
+
+  // CNN output (mirrors CNNModel.run — uses Z Fine Acceleration)
+  const vib=Math.abs(sensors['Z Fine Acceleration']||0);
+  const cnnPattern=vib>0.1?'VIBRATION_PATTERN':'NORMAL';
+  document.getElementById('badge_cnn').textContent=cnnPattern==='VIBRATION_PATTERN'?'VIBRATION':'NORMAL';
+  document.getElementById('badge_cnn').className='model-out-badge '+(cnnPattern==='VIBRATION_PATTERN'?'badge-warning':'badge-normal');
+  document.getElementById('val_cnn').textContent=`Z Fine Accel: ${vib.toFixed(4)} · pattern: ${cnnPattern}`;
+
+  // Transformer output (mirrors TransformerModel.run)
+  const predTemp=(sensors.xTemp||0)+0.5;
+  document.getElementById('badge_trans').textContent='PREDICT';
+  document.getElementById('badge_trans').className='model-out-badge badge-normal';
+  document.getElementById('val_trans').textContent=`pred_temp: ${predTemp.toFixed(3)} · based on xTemp: ${sensors.xTemp??'—'}`;
+
+  // GNN output (mirrors GNNModel.run)
+  document.getElementById('badge_gnn').textContent='STRUCT';
+  document.getElementById('val_gnn').textContent=`subsystem: structure · graph analysis: nominal`;
+}
+
+// ══════════════════════════════════════════════════
+//  STATUS CARDS
+// ══════════════════════════════════════════════════
+function updateCards(data){
+  const s=data.sensors; const score=data.anomaly_score;
+  const el=document.getElementById('scoreVal');
+  const st=document.getElementById('scoreStatus');
+  el.textContent=score.toFixed(4);
+  if(score>0.2){
+    el.className='stat-val r'; st.textContent='● CRITICAL'; st.style.color='var(--red)';
+    document.getElementById('wsDot').className='ws-dot critical';
+    document.getElementById('wsLabel').textContent='⚠ ANOMALY DETECTED';
+    document.getElementById('wsLabel').style.color='var(--red)';
+    document.getElementById('ledAnomaly').setAttribute('fill','#ff3355');
+    document.getElementById('ledAnomaly').setAttribute('opacity','1');
+  } else if(score>0.05){
+    el.className='stat-val a'; st.textContent='▲ WARNING'; st.style.color='var(--amber)';
+    document.getElementById('wsDot').className='ws-dot warning';
+    document.getElementById('wsLabel').textContent='WARNING ACTIVE';
+    document.getElementById('wsLabel').style.color='var(--amber)';
+    document.getElementById('ledAnomaly').setAttribute('fill','#ffaa00');
+    document.getElementById('ledAnomaly').setAttribute('opacity','0.9');
+  } else {
+    el.className='stat-val g'; st.textContent='✓ NOMINAL'; st.style.color='var(--green)';
+    document.getElementById('wsDot').className='ws-dot live';
+    document.getElementById('wsLabel').textContent='ALL SYSTEMS NOMINAL';
+    document.getElementById('wsLabel').style.color='var(--green)';
+    document.getElementById('ledAnomaly').setAttribute('fill','#00ff88');
+    document.getElementById('ledAnomaly').setAttribute('opacity','0.5');
+  }
+  document.getElementById('xTempVal').textContent=s.xTemp??'—';
+  document.getElementById('yzTempVal').textContent=`${s.yTemp??'—'} / ${s.zTemp??'—'}`;
+  const fz=s['Z Fine Acceleration'];
+  document.getElementById('fineZVal').textContent=fz!=null?fz.toFixed(4):'—';
+  document.getElementById('scoreSparkVal').textContent=score.toFixed(4);
+}
+
+// ══════════════════════════════════════════════════
+//  SENSOR TABLE — every key from data.sensors
+// ══════════════════════════════════════════════════
+function updateSensorTable(sensors){
+  let html='';
+  for(const k in sensors){
+    const v=sensors[k];
+    const fmt=typeof v==='number'?v.toFixed(6):v;
+    html+=`<tr><td>${k}</td><td>${fmt}</td></tr>`;
+  }
+  document.getElementById('sensorTbody').innerHTML=html;
+}
+
+// ══════════════════════════════════════════════════
+//  ANOMALY EVENT FEED
+// ══════════════════════════════════════════════════
+let pktCount=0,anomCount=0,critCount=0,warnCount=0,prevScore=0;
+function addAnomalyEvent(score){
+  const ts=new Date().toTimeString().slice(0,8);
+  let sevCls,msg,sys;
+  if(score>0.2&&prevScore<=0.2){
+    sevCls='c'; msg='Score > 0.20 — CRITICAL threshold breached'; sys='LSTM';
+    critCount++; document.getElementById('critCount').textContent=critCount;
+    anomCount++;  document.getElementById('anomCount').textContent=anomCount;
+  } else if(score>0.05&&prevScore<=0.05){
+    sevCls='w'; msg='Score > 0.05 — WARNING threshold breached'; sys='LSTM';
+    warnCount++; document.getElementById('warnCount').textContent=warnCount;
+    anomCount++;  document.getElementById('anomCount').textContent=anomCount;
+  } else if(score<=0.05&&prevScore>0.05){
+    sevCls='n'; msg='Score returned to NOMINAL range (≤0.05)'; sys='LSTM';
+    anomCount++;  document.getElementById('anomCount').textContent=anomCount;
+  } else { prevScore=score; return; }
+  const feed=document.getElementById('anomFeed');
+  const row=document.createElement('div'); row.className='anom-row';
+  row.innerHTML=`<div class="sev ${sevCls}"></div><span class="a-time">${ts}</span><span class="a-msg">${msg}</span><span class="a-sys">${sys}</span>`;
+  feed.insertBefore(row,feed.firstChild);
+  if(feed.children.length>35)feed.removeChild(feed.lastChild);
+  prevScore=score;
+}
+function heartbeat(score){
+  pktCount++; document.getElementById('pktCount').textContent=pktCount;
+  document.getElementById('lastPkt').textContent=new Date().toLocaleTimeString();
+  if(pktCount%25===0){
+    const feed=document.getElementById('anomFeed');
+    const row=document.createElement('div'); row.className='anom-row';
+    row.innerHTML=`<div class="sev n"></div><span class="a-time">${new Date().toTimeString().slice(0,8)}</span><span class="a-msg">Heartbeat · ${pktCount} pkts · score ${score.toFixed(4)}</span><span class="a-sys">TELEMETRY</span>`;
+    feed.insertBefore(row,feed.firstChild);
+    if(feed.children.length>35)feed.removeChild(feed.lastChild);
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  ★ WEBSOCKET — ws://127.0.0.1:9000/telemetry ★
+//  Receives exactly: { "sensors": {...}, "anomaly_score": float }
+//  as sent by: await websocket.send_json(current_state)
+// ══════════════════════════════════════════════════
+function connectWS(){
+  const ws=new WebSocket('ws://127.0.0.1:9000/telemetry');
+
+  ws.onopen=()=>{
+    document.getElementById('wsDot').className='ws-dot live';
+    document.getElementById('wsLabel').textContent='LIVE · CONNECTED';
+    document.getElementById('wsLabel').style.color='var(--green)';
+    console.log('[WS] Connected to ws://127.0.0.1:9000/telemetry');
+  };
+
+  ws.onclose=()=>{
+    document.getElementById('wsDot').className='ws-dot';
+    document.getElementById('wsLabel').textContent='DISCONNECTED · RETRYING…';
+    document.getElementById('wsLabel').style.color='var(--red)';
+    setTimeout(connectWS,3000); // auto-reconnect every 3s
+  };
+
+  ws.onerror=e=>console.error('[WS] Error:',e);
+
+  ws.onmessage=event=>{
+    let data;
+    try{ data=JSON.parse(event.data); }
+    catch(e){ console.error('[WS] Parse error:',e); return; }
+
+    const s=data.sensors||{};
+    const score=Number(data.anomaly_score)||0;
+
+    // ── Push to charts (exact field names from your CSV/dashboard_server.py) ──
+    push(tempChart,0,s.xTemp);
+    push(tempChart,1,s.yTemp);
+    push(tempChart,2,s.zTemp);
+    tempChart.update('none');
+
+    push(accChart,0,s['X Fine Acceleration']);
+    push(accChart,1,s['Y Fine Acceleration']);
+    push(accChart,2,s['Z Fine Acceleration']);
+    push(accChart,3,s['X Coarse Acceleration']);
+    push(accChart,4,s['Y Coarse Acceleration']);
+    push(accChart,5,s['Z Coarse Acceleration']);
+    accChart.update('none');
+
+    push(scoreChart,0,score);
+    scoreChart.update('none');
+
+    // ── Update all panels ──
+    updateCards(data);
+    updateSensorTable(s);
+    updateSubsystems(score);
+    updateRing(score);
+    updateModelOutputs(s,score);
+    addAnomalyEvent(score);
+    heartbeat(score);
+  };
+}
+
+connectWS();
+
+// ══════════════════════════════════════════════════
+//  ★ AI QUERY — GET /ask?question=... ★
+//  Returns: { "response": "..." } from Ollama llama3
+//  Model routing happens in ai_system.py:select_model()
+// ══════════════════════════════════════════════════
+function highlightModel(question){
+  // Mirror select_model() logic from ai_system.py
+  const q=question.toLowerCase();
+  document.getElementById('chip_lstm').className='model-chip lstm';
+  document.getElementById('chip_cnn').className='model-chip cnn';
+  document.getElementById('chip_trans').className='model-chip trans';
+  document.getElementById('chip_gnn').className='model-chip gnn';
+  if(q.includes('pattern'))      document.getElementById('chip_cnn').className='model-chip cnn active';
+  else if(q.includes('predict')) document.getElementById('chip_trans').className='model-chip trans active';
+  else if(q.includes('cause'))   document.getElementById('chip_gnn').className='model-chip gnn active';
+  else                           document.getElementById('chip_lstm').className='model-chip lstm active'; // default = LSTM
+}
+
+function askAI(question){
+  const out=document.getElementById('aiOut');
+  const btn=document.getElementById('aiBtn');
+  document.getElementById('aiIn').value=question;
+  highlightModel(question);
+
+  const q=question.toLowerCase();
+  const modelName=q.includes('pattern')?'CNN':q.includes('predict')?'TRANSFORMER':q.includes('cause')?'GNN':'LSTM';
+
+  out.innerHTML=`<span style="color:var(--cyan-dim);">&gt; ${question}</span><br><span style="color:var(--text-label);">// Routing to ${modelName} → Ollama llama3…</span>`;
+  out.classList.add('ai-typing');
+  btn.disabled=true;
+
+  fetch(`/ask?question=${encodeURIComponent(question)}`)
+    .then(r=>r.json())
+    .then(d=>{
+      out.classList.remove('ai-typing');
+      btn.disabled=false;
+      // Your /ask endpoint returns {"response": "..."}
+      const resp=d.response||d.answer||d.result||JSON.stringify(d);
+      out.innerHTML=
+        `<span style="color:var(--cyan-dim);">&gt; ${question}</span>`+
+        `<br><span style="color:var(--text-label);">// Model: ${modelName} · Ollama llama3</span><br><br>`+
+        `<span style="color:var(--text-primary);">${resp}</span>`;
+      document.getElementById('aiIn').value='';
+    })
+    .catch(err=>{
+      out.classList.remove('ai-typing');
+      btn.disabled=false;
+      out.innerHTML=
+        `<span style="color:var(--cyan-dim);">&gt; ${question}</span><br><br>`+
+        `<span style="color:var(--red);">// /ask endpoint error: ${err.message}`+
+        `<br>// Is dashboard_server.py running on port 9000?</span>`;
+    });
+}
+
+document.getElementById('aiBtn').onclick=()=>{
+  const q=document.getElementById('aiIn').value.trim();
+  if(q)askAI(q);
+};
+document.getElementById('aiIn').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){const q=e.target.value.trim();if(q)askAI(q);}
+});
+</script>
+</body>
+</html>

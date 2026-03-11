@@ -1,28 +1,59 @@
-import asyncio
-import pandas as pd
 from fastapi import FastAPI, WebSocket
+import pandas as pd
+import json
+import asyncio
+import os
+from fastapi.responses import HTMLResponse
 
 app = FastAPI()
 
-csv_file = "data/ch3_ilsa/ils/data/calibrated/20230824/ch3_ils_nop_calib_20230824t101208872_d_accln.csv"
+DATA_ROOT = r"G:\Pro_NML\data\ch3_ilsa\ils\data\calibrated"
+
+
+def load_all_csv():
+
+    files = []
+
+    for day in sorted(os.listdir(DATA_ROOT)):
+
+        day_path = os.path.join(DATA_ROOT, day)
+
+        if os.path.isdir(day_path):
+
+            for f in sorted(os.listdir(day_path)):
+
+                if f.endswith(".csv"):
+                    files.append(os.path.join(day_path, f))
+
+    return files
+
 
 @app.websocket("/telemetry")
-
 async def telemetry_stream(websocket: WebSocket):
 
     await websocket.accept()
 
-    df = pd.read_csv(csv_file)
+    files = load_all_csv()
 
-    for i in range(len(df)):
+    try:
 
-        data = {
-            "xTemp": float(df["xTemp"].iloc[i]),
-            "yTemp": float(df["yTemp"].iloc[i]),
-            "zTemp": float(df["zTemp"].iloc[i]),
-            "xAcc": float(df["X Fine Acceleration"].iloc[i]),
-        }
+        for file in files:
 
-        await websocket.send_json(data)
+            df = pd.read_csv(file)
 
-        await asyncio.sleep(0.1)
+            for _, row in df.iterrows():
+
+                await websocket.send_text(json.dumps(row.to_dict()))
+
+                await asyncio.sleep(0.02)
+
+    except Exception as e:
+
+        print("WebSocket disconnected:", e)
+        
+@app.get("/")
+def home():
+
+    with open("dashboard/index.html") as f:
+
+        return HTMLResponse(f.read())
