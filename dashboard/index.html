@@ -3,980 +3,755 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Spacecraft Health AI — Mission Control</title>
-<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;600;700;900&family=Exo+2:wght@300;400;500&display=swap" rel="stylesheet">
+<title>Spacecraft Health AI v2 — Mission Control</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;600;700;900&family=Exo+2:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg-void: #020508;
-    --bg-panel: #070f1a;
-    --border: rgba(0,180,255,0.15);
-    --border-bright: rgba(0,180,255,0.4);
-    --cyan: #00b4ff;
-    --cyan-dim: #0077aa;
-    --cyan-glow: rgba(0,180,255,0.25);
-    --green: #00ff88;
-    --green-dim: #00aa55;
-    --green-glow: rgba(0,255,136,0.2);
-    --amber: #ffaa00;
-    --amber-glow: rgba(255,170,0,0.2);
-    --red: #ff3355;
-    --red-glow: rgba(255,51,85,0.25);
-    --purple: #aa44ff;
-    --text-primary: #c8e8ff;
-    --text-secondary: #4a7a99;
-    --text-label: #2a5a77;
-    --font-mono: 'Share Tech Mono', monospace;
-    --font-display: 'Orbitron', sans-serif;
-    --font-body: 'Exo 2', sans-serif;
-  }
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body {
-    background:var(--bg-void); color:var(--text-primary); font-family:var(--font-body);
-    min-height:100vh; overflow-x:hidden;
-    background-image:
-      radial-gradient(ellipse 80% 40% at 50% 0%, rgba(0,60,100,0.3) 0%, transparent 70%),
-      radial-gradient(ellipse 40% 60% at 0% 50%, rgba(0,40,80,0.15) 0%, transparent 60%);
-  }
-  body::before {
-    content:''; position:fixed; inset:0; pointer-events:none; z-index:1000;
-    background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);
-  }
-  .starfield { position:fixed; inset:0; pointer-events:none; z-index:0; }
-  .star { position:absolute; border-radius:50%; background:white; animation:twinkle var(--d,3s) ease-in-out infinite alternate; }
-  @keyframes twinkle { from{opacity:var(--o1,.1)} to{opacity:var(--o2,.6)} }
-  .wrapper { position:relative; z-index:1; display:grid; grid-template-rows:auto 1fr auto; min-height:100vh; padding:0 14px 14px; gap:10px; }
+:root{
+  --void:#020508;--panel:#070f1a;--panel2:#0a1520;
+  --b:rgba(0,180,255,0.15);--bb:rgba(0,180,255,0.4);
+  --cyan:#00b4ff;--cdim:#0077aa;--cglow:rgba(0,180,255,0.25);
+  --green:#00ff88;--gdim:#00aa55;--gglow:rgba(0,255,136,0.2);
+  --amber:#ffaa00;--aglow:rgba(255,170,0,0.2);
+  --red:#ff3355;--rglow:rgba(255,51,85,0.25);
+  --purple:#aa44ff;--pglow:rgba(170,68,255,0.2);
+  --tp:#c8e8ff;--ts:#4a7a99;--tl:#2a5a77;
+  --mono:'Share Tech Mono',monospace;
+  --disp:'Orbitron',sans-serif;
+  --body:'Exo 2',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--void);color:var(--tp);font-family:var(--body);min-height:100vh;overflow-x:hidden;
+  background-image:radial-gradient(ellipse 80% 40% at 50% 0%,rgba(0,60,100,.3) 0%,transparent 70%)}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.025) 2px,rgba(0,0,0,.025) 4px)}
+.sf{position:fixed;inset:0;pointer-events:none;z-index:0}
+.st{position:absolute;border-radius:50%;background:#fff;animation:tw var(--d,3s) ease-in-out infinite alternate}
+@keyframes tw{from{opacity:var(--a,.1)}to{opacity:var(--b2,.6)}}
+.wrap{position:relative;z-index:1;display:grid;grid-template-rows:auto 1fr auto;min-height:100vh;padding:0 14px 12px;gap:9px}
 
-  /* ── HEADER ── */
-  header {
-    padding:12px 0 10px; display:grid; grid-template-columns:1fr auto 1fr;
-    align-items:center; border-bottom:1px solid var(--border); position:relative;
-  }
-  header::after {
-    content:''; position:absolute; bottom:-1px; left:50%; transform:translateX(-50%);
-    width:200px; height:1px; background:var(--cyan);
-    box-shadow:0 0 20px var(--cyan),0 0 40px var(--cyan-glow);
-  }
-  .hdr-left { display:flex; flex-direction:column; gap:3px; }
-  .hdr-id   { font-family:var(--font-mono); font-size:9px; color:var(--cyan-dim); letter-spacing:3px; }
-  .hdr-sub  { font-family:var(--font-display); font-size:10px; font-weight:600; color:var(--text-secondary); letter-spacing:2px; }
-  .hdr-center { text-align:center; }
-  .main-title {
-    font-family:var(--font-display); font-size:18px; font-weight:900;
-    letter-spacing:5px; color:var(--cyan);
-    text-shadow:0 0 20px var(--cyan),0 0 60px var(--cyan-glow);
-    animation:titlePulse 4s ease-in-out infinite;
-  }
-  @keyframes titlePulse {
-    0%,100%{text-shadow:0 0 20px var(--cyan),0 0 60px var(--cyan-glow)}
-    50%{text-shadow:0 0 30px var(--cyan),0 0 80px var(--cyan-glow),0 0 120px rgba(0,180,255,0.1)}
-  }
-  .sub-title { font-family:var(--font-mono); font-size:8px; letter-spacing:7px; color:var(--text-label); margin-top:4px; }
-  .hdr-right { display:flex; justify-content:flex-end; align-items:center; gap:16px; }
-  .ws-badge {
-    display:flex; align-items:center; gap:7px;
-    font-family:var(--font-mono); font-size:9px; letter-spacing:2px;
-  }
-  .ws-dot {
-    width:8px; height:8px; border-radius:50%;
-    background:var(--red); box-shadow:0 0 8px var(--red);
-    animation:blinkFast 0.8s ease-in-out infinite;
-  }
-  .ws-dot.live    { background:var(--green); box-shadow:0 0 8px var(--green),0 0 16px var(--green-glow); animation:blinkSlow 2s ease-in-out infinite; }
-  .ws-dot.warning { background:var(--amber); box-shadow:0 0 8px var(--amber),0 0 16px var(--amber-glow); animation:blinkFast 0.5s ease-in-out infinite; }
-  .ws-dot.critical{ background:var(--red);   box-shadow:0 0 8px var(--red),  0 0 16px var(--red-glow);   animation:blinkFast 0.3s ease-in-out infinite; }
-  @keyframes blinkFast { 0%,100%{opacity:1} 50%{opacity:0.15} }
-  @keyframes blinkSlow { 0%,100%{opacity:1} 50%{opacity:0.5} }
-  .live-clock { font-family:var(--font-mono); font-size:12px; color:var(--cyan); letter-spacing:2px; }
+/* HEADER */
+header{padding:10px 0 9px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;border-bottom:1px solid var(--b);position:relative}
+header::after{content:'';position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);width:220px;height:1px;background:var(--cyan);box-shadow:0 0 20px var(--cyan),0 0 50px var(--cglow)}
+.hl{display:flex;flex-direction:column;gap:2px}
+.hid{font-family:var(--mono);font-size:8px;color:var(--cdim);letter-spacing:3px}
+.hsub{font-family:var(--disp);font-size:9px;font-weight:600;color:var(--ts);letter-spacing:2px}
+.hc{text-align:center}
+.title{font-family:var(--disp);font-size:17px;font-weight:900;letter-spacing:5px;color:var(--cyan);text-shadow:0 0 20px var(--cyan),0 0 60px var(--cglow);animation:tpulse 4s ease-in-out infinite}
+@keyframes tpulse{0%,100%{text-shadow:0 0 20px var(--cyan),0 0 60px var(--cglow)}50%{text-shadow:0 0 30px var(--cyan),0 0 90px var(--cglow)}}
+.subtitle{font-family:var(--mono);font-size:7px;letter-spacing:6px;color:var(--tl);margin-top:3px}
+.hr{display:flex;justify-content:flex-end;align-items:center;gap:14px}
+.wsbadge{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:9px;letter-spacing:2px}
+.wsd{width:8px;height:8px;border-radius:50%;background:var(--red);box-shadow:0 0 8px var(--red);animation:bf .8s ease-in-out infinite}
+.wsd.live{background:var(--green);box-shadow:0 0 8px var(--green),0 0 16px var(--gglow);animation:bs 2s ease-in-out infinite}
+.wsd.warn{background:var(--amber);box-shadow:0 0 8px var(--amber);animation:bf .5s ease-in-out infinite}
+.wsd.crit{background:var(--red);box-shadow:0 0 12px var(--red),0 0 22px var(--rglow);animation:bf .25s ease-in-out infinite}
+@keyframes bf{0%,100%{opacity:1}50%{opacity:.15}}
+@keyframes bs{0%,100%{opacity:1}50%{opacity:.5}}
+.clk{font-family:var(--mono);font-size:12px;color:var(--cyan);letter-spacing:2px}
 
-  /* ── LAYOUT ── */
-  .main-grid { display:grid; grid-template-columns:255px 1fr 275px; gap:10px; align-items:start; }
+/* MAIN GRID: left | center | right */
+.grid{display:grid;grid-template-columns:248px 1fr 272px;gap:9px;align-items:start}
 
-  /* ── PANEL ── */
-  .panel {
-    background:var(--bg-panel); border:1px solid var(--border); border-radius:4px;
-    padding:13px; position:relative; overflow:hidden;
-    animation:panelIn 0.5s ease both; transition:border-color 0.3s;
-  }
-  .panel::before { content:''; position:absolute; inset:0; background:linear-gradient(135deg,rgba(0,180,255,0.03) 0%,transparent 60%); pointer-events:none; }
-  .panel:hover { border-color:var(--border-bright); }
-  @keyframes panelIn { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
+/* PANEL */
+.p{background:var(--panel);border:1px solid var(--b);border-radius:4px;padding:12px;position:relative;overflow:hidden;animation:pi .5s ease both;transition:border-color .3s}
+.p::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(0,180,255,.03) 0%,transparent 60%);pointer-events:none}
+.p:hover{border-color:var(--bb)}
+@keyframes pi{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.k{position:absolute;width:8px;height:8px;border-color:var(--cyan);border-style:solid}
+.tl{top:0;left:0;border-width:1px 0 0 1px}.tr{top:0;right:0;border-width:1px 1px 0 0}
+.bl{bottom:0;left:0;border-width:0 0 1px 1px}.br{bottom:0;right:0;border-width:0 1px 1px 0}
+.pt{font-family:var(--disp);font-size:7px;font-weight:700;letter-spacing:4px;color:var(--cdim);margin-bottom:10px;display:flex;align-items:center;gap:7px}
+.pt::after{content:'';flex:1;height:1px;background:linear-gradient(to right,var(--b),transparent)}
 
-  /* corner brackets */
-  .k { position:absolute; width:9px; height:9px; border-color:var(--cyan); border-style:solid; }
-  .tl{top:0;left:0;border-width:1px 0 0 1px} .tr{top:0;right:0;border-width:1px 1px 0 0}
-  .bl{bottom:0;left:0;border-width:0 0 1px 1px} .br{bottom:0;right:0;border-width:0 1px 1px 0}
+/* LEFT */
+.lc{display:flex;flex-direction:column;gap:9px}
+.scw{position:relative;height:175px;display:flex;align-items:center;justify-content:center}
+.scsvg{width:148px;filter:drop-shadow(0 0 8px rgba(0,180,255,.4));animation:scp 3s ease-in-out infinite}
+@keyframes scp{0%,100%{filter:drop-shadow(0 0 8px rgba(0,180,255,.4))}50%{filter:drop-shadow(0 0 22px rgba(0,180,255,.85))}}
+.orb{position:absolute;border:1px solid rgba(0,180,255,.08);border-radius:50%}
+.orb:nth-child(1){width:190px;height:72px;animation:orr 20s linear infinite}
+.orb:nth-child(2){width:218px;height:92px;animation:orr 30s linear infinite reverse;border-color:rgba(0,180,255,.05)}
+@keyframes orr{from{transform:rotateX(70deg) rotate(0)}to{transform:rotateX(70deg) rotate(360deg)}}
+.sbl{display:flex;flex-direction:column;gap:6px}
+.sbi{display:grid;grid-template-columns:1fr auto;gap:4px;align-items:center}
+.sbn{font-family:var(--mono);font-size:8px;color:var(--ts);letter-spacing:1px;margin-bottom:2px}
+.sbtr{height:4px;background:rgba(0,0,0,.4);border-radius:2px;overflow:hidden;border:1px solid rgba(0,180,255,.07)}
+.sbf{height:100%;border-radius:2px;transition:width .8s ease}
+.sbf.g{background:linear-gradient(to right,var(--gdim),var(--green));box-shadow:0 0 6px var(--gglow)}
+.sbf.a{background:linear-gradient(to right,#aa6600,var(--amber));box-shadow:0 0 6px var(--aglow)}
+.sbf.r{background:linear-gradient(to right,#aa0022,var(--red));box-shadow:0 0 6px var(--rglow)}
+.sbp{font-family:var(--mono);font-size:8px}
+.sbp.g{color:var(--green)}.sbp.a{color:var(--amber)}.sbp.r{color:var(--red)}
+.stbl{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:8px}
+.stbl th{color:var(--tl);letter-spacing:2px;padding:3px 5px;border-bottom:1px solid var(--b);text-align:left}
+.stbl td{padding:2px 5px;border-bottom:1px solid rgba(0,180,255,.04);color:var(--ts)}
+.stbl td:last-child{color:var(--cyan);text-align:right}
+.stbl tr:hover td{background:rgba(0,180,255,.03)}
 
-  .ptitle {
-    font-family:var(--font-display); font-size:8px; font-weight:700;
-    letter-spacing:4px; color:var(--cyan-dim); margin-bottom:11px;
-    display:flex; align-items:center; gap:8px;
-  }
-  .ptitle::after { content:''; flex:1; height:1px; background:linear-gradient(to right,var(--border),transparent); }
+/* CENTER */
+.cc{display:flex;flex-direction:column;gap:9px}
+.statrow{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.sc2{background:rgba(0,0,0,.3);border:1px solid var(--b);border-radius:3px;padding:9px;text-align:center;transition:border-color .3s}
+.sc2:hover{border-color:var(--bb)}
+.sl{font-family:var(--mono);font-size:7px;color:var(--tl);letter-spacing:2px;margin-bottom:4px}
+.sv{font-family:var(--disp);font-size:14px;font-weight:700;line-height:1}
+.sv.g{color:var(--green);text-shadow:0 0 10px var(--gglow)}
+.sv.a{color:var(--amber);text-shadow:0 0 10px var(--aglow)}
+.sv.r{color:var(--red);text-shadow:0 0 10px var(--rglow)}
+.sv.c{color:var(--cyan);text-shadow:0 0 10px var(--cglow)}
+.sv.p{color:var(--purple);text-shadow:0 0 10px var(--pglow)}
+.ss{font-family:var(--mono);font-size:7px;color:var(--tl);margin-top:3px}
+.cw{position:relative}.cw canvas{width:100%!important}
+.cleg{display:flex;gap:10px;margin-top:5px;flex-wrap:wrap}
+.cleg span{font-family:var(--mono);font-size:7px}
 
-  /* ── LEFT ── */
-  .left-col { display:flex; flex-direction:column; gap:10px; }
+/* Anomaly feed */
+.asc{max-height:150px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--b) transparent}
+.ar{display:grid;grid-template-columns:7px 66px 1fr 68px;gap:7px;align-items:center;padding:5px 5px;border-bottom:1px solid rgba(0,180,255,.04);font-family:var(--mono);font-size:8px;animation:fdi .4s ease}
+@keyframes fdi{from{opacity:0;transform:translateX(-5px)}to{opacity:1;transform:none}}
+.ar:hover{background:rgba(0,180,255,.03)}
+.sd{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.sd.c{background:var(--red);box-shadow:0 0 5px var(--red)}
+.sd.w{background:var(--amber);box-shadow:0 0 5px var(--amber)}
+.sd.n{background:var(--green);box-shadow:0 0 5px var(--green)}
+.at2{color:var(--tl)}.am{color:var(--tp)}.as2{color:var(--cdim);text-align:right}
 
-  .sc-wrap { position:relative; height:182px; display:flex; align-items:center; justify-content:center; }
-  .sc-svg { width:152px; filter:drop-shadow(0 0 8px rgba(0,180,255,0.4)); animation:scPulse 3s ease-in-out infinite; }
-  @keyframes scPulse {
-    0%,100%{filter:drop-shadow(0 0 8px rgba(0,180,255,0.4))}
-    50%{filter:drop-shadow(0 0 20px rgba(0,180,255,0.8)) drop-shadow(0 0 40px rgba(0,180,255,0.3))}
-  }
-  .orbit-ring { position:absolute; border:1px solid rgba(0,180,255,0.08); border-radius:50%; }
-  .orbit-ring:nth-child(1){width:192px;height:74px;animation:orb 20s linear infinite;}
-  .orbit-ring:nth-child(2){width:220px;height:94px;animation:orb 30s linear infinite reverse;border-color:rgba(0,180,255,0.05);}
-  @keyframes orb{from{transform:rotateX(70deg) rotate(0)}to{transform:rotateX(70deg) rotate(360deg)}}
+/* AI copilot */
+.mtabs{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:9px}
+.mtab{background:rgba(0,0,0,.4);border:1px solid var(--b);border-radius:3px;padding:6px 5px;text-align:center;font-family:var(--mono);transition:all .3s}
+.mtab .mn{font-size:8px;font-weight:700;letter-spacing:2px}
+.mtab .mtr{font-size:7px;color:var(--tl);margin-top:2px;letter-spacing:1px}
+.mtab.al{border-color:var(--cyan);background:rgba(0,180,255,.08);box-shadow:0 0 10px var(--cglow)}
+.mtab.ac{border-color:var(--green);background:rgba(0,255,136,.06);box-shadow:0 0 10px var(--gglow)}
+.mtab.at{border-color:var(--amber);background:rgba(255,170,0,.07);box-shadow:0 0 10px var(--aglow)}
+.mtab.ag{border-color:var(--purple);background:rgba(170,68,255,.07);box-shadow:0 0 10px var(--pglow)}
+.aio{background:rgba(0,0,0,.45);border:1px solid var(--b);border-radius:3px;padding:9px;min-height:70px;max-height:110px;overflow-y:auto;font-family:var(--mono);font-size:8.5px;line-height:1.7;margin-bottom:7px;scrollbar-width:thin;scrollbar-color:var(--b) transparent}
+.aio.typing::after{content:'█';animation:cur .8s step-end infinite;color:var(--cyan)}
+@keyframes cur{0%,100%{opacity:1}50%{opacity:0}}
+.airow{display:flex;gap:5px;align-items:stretch}
+.aipfx{font-family:var(--mono);font-size:12px;color:var(--cyan);display:flex;align-items:center;padding:0 3px;flex-shrink:0}
+.aiinput{flex:1;background:rgba(0,0,0,.5);border:1px solid var(--b);border-radius:3px;color:var(--tp);font-family:var(--mono);font-size:8.5px;padding:6px 9px;outline:none;letter-spacing:1px;transition:border-color .2s}
+.aiinput:focus{border-color:var(--cdim);box-shadow:0 0 10px rgba(0,180,255,.1)}
+.aiinput::placeholder{color:var(--tl)}
+.aibtn{background:rgba(0,180,255,.1);border:1px solid var(--bb);border-radius:3px;color:var(--cyan);font-family:var(--disp);font-size:7px;font-weight:700;letter-spacing:2px;padding:6px 11px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.aibtn:hover{background:rgba(0,180,255,.2);box-shadow:0 0 12px var(--cglow)}
+.aibtn:disabled{opacity:.4;cursor:not-allowed}
+.chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
+.chip{font-family:var(--mono);font-size:7px;color:var(--ts);border:1px solid var(--b);border-radius:2px;padding:3px 6px;cursor:pointer;transition:all .2s;background:rgba(0,0,0,.3)}
+.chip:hover{color:var(--cyan);border-color:var(--cdim);background:rgba(0,180,255,.05)}
 
-  /* Subsystems */
-  .sub-list  { display:flex; flex-direction:column; gap:7px; }
-  .sub-item  { display:grid; grid-template-columns:1fr auto; gap:4px; align-items:center; }
-  .sub-name  { font-family:var(--font-mono); font-size:9px; color:var(--text-secondary); letter-spacing:1px; margin-bottom:3px; }
-  .sub-track { height:4px; background:rgba(0,0,0,0.4); border-radius:2px; overflow:hidden; border:1px solid rgba(0,180,255,0.07); }
-  .sub-fill  { height:100%; border-radius:2px; transition:width 0.8s ease; }
-  .sub-fill.g{background:linear-gradient(to right,var(--green-dim),var(--green));box-shadow:0 0 6px var(--green-glow);}
-  .sub-fill.a{background:linear-gradient(to right,#aa6600,var(--amber));box-shadow:0 0 6px var(--amber-glow);}
-  .sub-fill.r{background:linear-gradient(to right,#aa0022,var(--red));box-shadow:0 0 6px var(--red-glow);}
-  .sub-pct { font-family:var(--font-mono); font-size:9px; }
-  .sub-pct.g{color:var(--green)} .sub-pct.a{color:var(--amber)} .sub-pct.r{color:var(--red)}
+/* ═══ REPORT PANEL ═══ */
+.report-panel{background:rgba(0,0,0,.3);border:1px solid var(--b);border-radius:4px;padding:14px;margin-bottom:9px}
+.report-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.rbtn{display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 8px;border-radius:4px;cursor:pointer;transition:all .25s;border:1px solid var(--b);background:rgba(0,0,0,.4);text-decoration:none}
+.rbtn:hover{transform:translateY(-2px);box-shadow:0 4px 20px rgba(0,180,255,.15)}
+.rbtn.html{border-color:rgba(0,180,255,.4)}
+.rbtn.html:hover{background:rgba(0,180,255,.1);border-color:var(--cyan)}
+.rbtn.pdf{border-color:rgba(255,51,85,.3)}
+.rbtn.pdf:hover{background:rgba(255,51,85,.08);border-color:var(--red)}
+.rbtn-icon{font-size:22px;line-height:1}
+.rbtn-label{font-family:var(--disp);font-size:8px;font-weight:700;letter-spacing:2px}
+.rbtn-sub{font-family:var(--mono);font-size:7px;color:var(--tl);text-align:center}
+.report-info{font-family:var(--mono);font-size:8px;color:var(--tl);line-height:1.6;padding:8px;background:rgba(0,0,0,.3);border-radius:3px;border:1px solid rgba(0,180,255,.06)}
+.report-generating{display:none;align-items:center;gap:8px;font-family:var(--mono);font-size:8px;color:var(--amber);padding:8px;background:rgba(255,170,0,.05);border:1px solid rgba(255,170,0,.2);border-radius:3px;margin-top:8px}
+.spinner{width:12px;height:12px;border:2px solid rgba(255,170,0,.2);border-top-color:var(--amber);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 
-  /* Sensor table */
-  .s-tbl { width:100%; border-collapse:collapse; font-family:var(--font-mono); font-size:9px; }
-  .s-tbl th { color:var(--text-label); letter-spacing:2px; padding:4px 6px; border-bottom:1px solid var(--border); text-align:left; }
-  .s-tbl td { padding:3px 6px; border-bottom:1px solid rgba(0,180,255,0.04); color:var(--text-secondary); }
-  .s-tbl td:last-child { color:var(--cyan); text-align:right; }
-  .s-tbl tr:hover td { background:rgba(0,180,255,0.03); }
+/* ═══ IMAGE ANALYSIS PANEL ═══ */
+.dropzone{border:2px dashed rgba(0,180,255,.25);border-radius:6px;padding:20px;text-align:center;cursor:pointer;transition:all .3s;margin-bottom:10px;position:relative;min-height:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.dropzone.drag{border-color:var(--cyan);background:rgba(0,180,255,.06);box-shadow:0 0 20px rgba(0,180,255,.1)}
+.dropzone.has-file{border-color:var(--green);background:rgba(0,255,136,.04)}
+.dz-icon{font-size:24px;opacity:.6}
+.dz-label{font-family:var(--mono);font-size:8px;color:var(--ts);letter-spacing:1px}
+.dz-sub{font-family:var(--mono);font-size:7px;color:var(--tl)}
+.dz-preview{max-width:100%;max-height:120px;border-radius:4px;border:1px solid var(--b);display:none;margin:4px auto}
+#fileInput{display:none}
+.img-type-row{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin-bottom:10px}
+.itype{background:rgba(0,0,0,.4);border:1px solid var(--b);border-radius:3px;padding:5px 7px;font-family:var(--mono);font-size:7px;color:var(--ts);cursor:pointer;transition:all .2s;text-align:center;letter-spacing:1px}
+.itype.selected{border-color:var(--cyan);color:var(--cyan);background:rgba(0,180,255,.08)}
+.analyze-btn{width:100%;background:rgba(0,180,255,.1);border:1px solid var(--bb);border-radius:3px;color:var(--cyan);font-family:var(--disp);font-size:8px;font-weight:700;letter-spacing:3px;padding:9px;cursor:pointer;transition:all .2s;margin-bottom:8px}
+.analyze-btn:hover{background:rgba(0,180,255,.2);box-shadow:0 0 15px var(--cglow)}
+.analyze-btn:disabled{opacity:.4;cursor:not-allowed}
+.img-out{background:rgba(0,0,0,.45);border:1px solid var(--b);border-radius:3px;padding:9px;min-height:80px;max-height:200px;overflow-y:auto;font-family:var(--mono);font-size:8.5px;line-height:1.7;scrollbar-width:thin;scrollbar-color:var(--b) transparent}
+.img-out.typing::after{content:'█';animation:cur .8s step-end infinite;color:var(--cyan)}
+.img-section-label{font-family:var(--mono);font-size:7px;letter-spacing:2px;margin:5px 0 2px;padding:2px 0;}
+.img-section-label.desc{color:var(--cyan)}
+.img-section-label.anom{color:var(--amber)}
+.img-section-label.corr{color:var(--green)}
+.img-section-label.rec{color:var(--red)}
 
-  /* ── CENTER ── */
-  .center-col { display:flex; flex-direction:column; gap:10px; }
+/* RIGHT */
+.rc{display:flex;flex-direction:column;gap:9px}
+.rw{display:flex;flex-direction:column;align-items:center;padding:7px 0}
+.rsw{position:relative;width:126px;height:126px;margin-bottom:9px}
+.rsw svg{width:126px;height:126px;transform:rotate(-90deg)}
+.rbg{fill:none;stroke:rgba(0,180,255,.08);stroke-width:8}
+.rfg{fill:none;stroke-width:8;stroke-linecap:round;stroke-dasharray:327;transition:stroke-dashoffset 1s ease,stroke .5s ease}
+.ri{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.rnum{font-family:var(--disp);font-size:27px;font-weight:900;line-height:1}
+.rlbl{font-family:var(--mono);font-size:7px;color:var(--tl);letter-spacing:2px;margin-top:2px}
+.rstat{font-family:var(--disp);font-size:9px;font-weight:700;letter-spacing:3px}
+.rsub{font-family:var(--mono);font-size:7px;color:var(--tl);margin-top:3px}
+.sh{height:58px;position:relative}
+.moc{display:flex;flex-direction:column;gap:5px}
+.mocard{background:rgba(0,0,0,.3);border:1px solid var(--b);border-radius:3px;padding:8px;transition:border-color .4s}
+.moh{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+.moname{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:2px}
+.mobadge{font-family:var(--mono);font-size:7px;padding:2px 6px;border-radius:2px;letter-spacing:1px}
+.bn{background:rgba(0,255,136,.12);color:var(--green)}
+.bw{background:rgba(255,170,0,.12);color:var(--amber)}
+.bc{background:rgba(255,51,85,.12);color:var(--red)}
+.bp{background:rgba(170,68,255,.12);color:var(--purple)}
+.moval{font-family:var(--mono);font-size:8px;color:var(--ts);line-height:1.5}
+.mocard.flash{animation:flash .5s ease}
+@keyframes flash{0%{background:rgba(0,180,255,.1)}100%{background:rgba(0,0,0,.3)}}
+.mss{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.ms{background:rgba(0,0,0,.3);border:1px solid var(--b);border-radius:3px;padding:6px}
+.msl{font-family:var(--mono);font-size:7px;color:var(--tl);letter-spacing:1px;margin-bottom:2px}
+.msv{font-family:var(--mono);font-size:13px;color:var(--cyan)}
 
-  /* Stat cards */
-  .stat-row { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
-  .stat-card {
-    background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:3px;
-    padding:10px; text-align:center; transition:border-color 0.3s;
-  }
-  .stat-card:hover { border-color:var(--border-bright); }
-  .stat-lbl { font-family:var(--font-mono); font-size:7px; color:var(--text-label); letter-spacing:2px; margin-bottom:5px; }
-  .stat-val { font-family:var(--font-display); font-size:15px; font-weight:700; line-height:1; }
-  .stat-val.g{color:var(--green);text-shadow:0 0 10px var(--green-glow)}
-  .stat-val.a{color:var(--amber);text-shadow:0 0 10px var(--amber-glow)}
-  .stat-val.r{color:var(--red);text-shadow:0 0 10px var(--red-glow)}
-  .stat-val.c{color:var(--cyan);text-shadow:0 0 10px var(--cyan-glow)}
-  .stat-sub { font-family:var(--font-mono); font-size:7px; color:var(--text-label); margin-top:4px; }
-
-  /* Charts */
-  .chart-wrap { position:relative; }
-  .chart-wrap canvas { width:100%!important; }
-  .chart-legend { display:flex; gap:12px; margin-top:6px; flex-wrap:wrap; }
-  .chart-legend span { font-family:var(--font-mono); font-size:8px; }
-
-  /* Anomaly feed */
-  .anom-scroll { max-height:175px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
-  .anom-row {
-    display:grid; grid-template-columns:7px 68px 1fr 70px; gap:8px; align-items:center;
-    padding:6px 6px; border-bottom:1px solid rgba(0,180,255,0.04);
-    font-family:var(--font-mono); font-size:8px; animation:fadeIn 0.4s ease;
-  }
-  @keyframes fadeIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
-  .anom-row:hover { background:rgba(0,180,255,0.03); }
-  .sev { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
-  .sev.c{background:var(--red);box-shadow:0 0 5px var(--red)}
-  .sev.w{background:var(--amber);box-shadow:0 0 5px var(--amber)}
-  .sev.n{background:var(--green);box-shadow:0 0 5px var(--green)}
-  .a-time{color:var(--text-label)} .a-msg{color:var(--text-primary)} .a-sys{color:var(--cyan-dim);text-align:right}
-
-  /* ── AI PANEL ── */
-  .ai-models-row { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:10px; }
-  .model-chip {
-    background:rgba(0,0,0,0.4); border:1px solid var(--border); border-radius:3px;
-    padding:6px 8px; text-align:center; cursor:default;
-    font-family:var(--font-mono); font-size:8px; transition:all 0.3s;
-  }
-  .model-chip.active {
-    border-color:var(--cyan); background:rgba(0,180,255,0.1);
-    box-shadow:0 0 10px var(--cyan-glow);
-  }
-  .model-chip.active.lstm  { border-color:var(--cyan);   background:rgba(0,180,255,0.1);  }
-  .model-chip.active.cnn   { border-color:var(--green);  background:rgba(0,255,136,0.08); box-shadow:0 0 10px var(--green-glow); }
-  .model-chip.active.trans { border-color:var(--amber);  background:rgba(255,170,0,0.08); box-shadow:0 0 10px var(--amber-glow); }
-  .model-chip.active.gnn   { border-color:var(--purple); background:rgba(170,68,255,0.08);box-shadow:0 0 10px rgba(170,68,255,0.2); }
-  .model-name { letter-spacing:2px; font-weight:700; }
-  .model-trigger { font-size:7px; color:var(--text-label); margin-top:2px; letter-spacing:1px; }
-
-  .ai-out {
-    background:rgba(0,0,0,0.45); border:1px solid var(--border); border-radius:3px;
-    padding:10px; min-height:80px; max-height:130px; overflow-y:auto;
-    font-family:var(--font-mono); font-size:9px; line-height:1.7; margin-bottom:8px;
-    scrollbar-width:thin; scrollbar-color:var(--border) transparent;
-  }
-  .ai-typing::after { content:'█'; animation:cur 0.8s step-end infinite; color:var(--cyan); }
-  @keyframes cur{0%,100%{opacity:1}50%{opacity:0}}
-
-  .ai-input-row { display:flex; gap:6px; align-items:stretch; }
-  .ai-pfx { font-family:var(--font-mono); font-size:12px; color:var(--cyan); display:flex; align-items:center; padding:0 3px; flex-shrink:0; }
-  .ai-input {
-    flex:1; background:rgba(0,0,0,0.5); border:1px solid var(--border); border-radius:3px;
-    color:var(--text-primary); font-family:var(--font-mono); font-size:9px;
-    padding:7px 10px; outline:none; letter-spacing:1px; transition:border-color 0.2s,box-shadow 0.2s;
-  }
-  .ai-input:focus { border-color:var(--cyan-dim); box-shadow:0 0 10px rgba(0,180,255,0.1); }
-  .ai-input::placeholder { color:var(--text-label); }
-  .ai-btn {
-    background:rgba(0,180,255,0.1); border:1px solid var(--border-bright); border-radius:3px;
-    color:var(--cyan); font-family:var(--font-display); font-size:7px; font-weight:700;
-    letter-spacing:2px; padding:7px 12px; cursor:pointer; transition:all 0.2s; white-space:nowrap;
-  }
-  .ai-btn:hover { background:rgba(0,180,255,0.2); box-shadow:0 0 12px var(--cyan-glow); border-color:var(--cyan); }
-  .ai-btn:disabled { opacity:0.4; cursor:not-allowed; }
-
-  .chips { display:flex; flex-wrap:wrap; gap:4px; margin-top:7px; }
-  .chip {
-    font-family:var(--font-mono); font-size:7px; color:var(--text-secondary);
-    border:1px solid var(--border); border-radius:2px; padding:3px 7px;
-    cursor:pointer; transition:all 0.2s; background:rgba(0,0,0,0.3);
-  }
-  .chip:hover { color:var(--cyan); border-color:var(--cyan-dim); background:rgba(0,180,255,0.05); }
-
-  /* ── RIGHT ── */
-  .right-col { display:flex; flex-direction:column; gap:10px; }
-
-  /* Health ring */
-  .ring-wrap { display:flex; flex-direction:column; align-items:center; padding:8px 0; }
-  .ring-svg-wrap { position:relative; width:128px; height:128px; margin-bottom:10px; }
-  .ring-svg-wrap svg { width:128px; height:128px; transform:rotate(-90deg); }
-  .ring-bg { fill:none; stroke:rgba(0,180,255,0.08); stroke-width:8; }
-  .ring-fg { fill:none; stroke-width:8; stroke-linecap:round; stroke-dasharray:327; transition:stroke-dashoffset 1s ease,stroke 0.5s ease; }
-  .ring-inner { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
-  .ring-num    { font-family:var(--font-display); font-size:28px; font-weight:900; line-height:1; }
-  .ring-lbl    { font-family:var(--font-mono); font-size:7px; color:var(--text-label); letter-spacing:2px; margin-top:3px; }
-  .ring-status { font-family:var(--font-display); font-size:9px; font-weight:700; letter-spacing:3px; }
-  .ring-sub    { font-family:var(--font-mono); font-size:8px; color:var(--text-label); margin-top:4px; }
-
-  /* Score history */
-  .score-history { height:60px; position:relative; }
-
-  /* Model output cards */
-  .model-outputs { display:flex; flex-direction:column; gap:6px; }
-  .model-out-card {
-    background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:3px; padding:8px;
-    font-family:var(--font-mono); font-size:8px; transition:border-color 0.3s;
-  }
-  .model-out-card.active-card { border-color:var(--cyan-dim); }
-  .model-out-header { display:flex; justify-content:space-between; margin-bottom:5px; }
-  .model-out-name { color:var(--cyan); letter-spacing:2px; font-size:8px; }
-  .model-out-badge { font-size:7px; padding:1px 5px; border-radius:2px; letter-spacing:1px; }
-  .badge-normal   { background:rgba(0,255,136,0.15); color:var(--green); }
-  .badge-anomaly  { background:rgba(255,51,85,0.15);  color:var(--red); }
-  .badge-warning  { background:rgba(255,170,0,0.15); color:var(--amber); }
-  .model-out-val { color:var(--text-primary); line-height:1.5; }
-
-  /* Session stats */
-  .mini-stats { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
-  .mini-stat { background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:3px; padding:7px; }
-  .mini-stat-lbl { font-family:var(--font-mono); font-size:7px; color:var(--text-label); letter-spacing:1px; margin-bottom:3px; }
-  .mini-stat-val { font-family:var(--font-mono); font-size:13px; color:var(--cyan); }
-
-  /* ── FOOTER ── */
-  footer { border-top:1px solid var(--border); padding:7px 0; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
-  .f-stat { display:flex; align-items:center; gap:5px; font-family:var(--font-mono); font-size:8px; color:var(--text-secondary); white-space:nowrap; }
-  .f-val  { color:var(--cyan); }
-  .f-div  { width:1px; height:18px; background:var(--border); flex-shrink:0; }
-  .met    { font-family:var(--font-display); font-size:8px; letter-spacing:3px; color:var(--text-label); }
-  .met span { color:var(--amber); font-weight:700; }
-
-  ::-webkit-scrollbar{width:3px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+/* FOOTER */
+footer{border-top:1px solid var(--b);padding:6px 0;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.fs{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:7.5px;color:var(--ts);white-space:nowrap}
+.fv{color:var(--cyan)}.fd{width:1px;height:16px;background:var(--b);flex-shrink:0}
+.met{font-family:var(--disp);font-size:7.5px;letter-spacing:3px;color:var(--tl)}
+.met span{color:var(--amber);font-weight:700}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--b);border-radius:2px}
 </style>
 </head>
 <body>
-<div class="starfield" id="sf"></div>
-<div class="wrapper">
+<div class="sf" id="sf"></div>
+<div class="wrap">
 
-  <!-- ══ HEADER ══ -->
-  <header>
-    <div class="hdr-left">
-      <div class="hdr-id">MISSION // CH3-ILSA · PORT 9000</div>
-      <div class="hdr-sub">CHANDRAYAAN-3 · ILSA SEISMOMETER</div>
-    </div>
-    <div class="hdr-center">
-      <div class="main-title">SPACECRAFT HEALTH AI</div>
-      <div class="sub-title">AUTONOMOUS MISSION CONTROL · LSTM · CNN · TRANSFORMER · GNN</div>
-    </div>
-    <div class="hdr-right">
-      <div class="ws-badge">
-        <div class="ws-dot" id="wsDot"></div>
-        <span id="wsLabel" style="color:var(--red);">CONNECTING…</span>
-      </div>
-      <div class="live-clock" id="clock">00:00:00 UTC</div>
-    </div>
-  </header>
-
-  <!-- ══ MAIN ══ -->
-  <div class="main-grid">
-
-    <!-- ═ LEFT ═ -->
-    <div class="left-col">
-
-      <!-- Spacecraft diagram -->
-      <div class="panel">
-        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
-        <div class="ptitle">CHANDRAYAAN-3 · ILSA PAYLOAD</div>
-        <div class="sc-wrap">
-          <div class="orbit-ring"></div><div class="orbit-ring"></div>
-          <svg class="sc-svg" viewBox="0 0 160 120" fill="none">
-            <!-- Solar panels -->
-            <rect x="5"   y="48" width="40" height="24" rx="2" fill="rgba(0,80,140,0.8)" stroke="#0077aa" stroke-width="1"/>
-            <line x1="15" y1="48" x2="15" y2="72" stroke="#003355" stroke-width="0.5"/>
-            <line x1="25" y1="48" x2="25" y2="72" stroke="#003355" stroke-width="0.5"/>
-            <line x1="35" y1="48" x2="35" y2="72" stroke="#003355" stroke-width="0.5"/>
-            <rect x="115" y="48" width="40" height="24" rx="2" fill="rgba(0,80,140,0.8)" stroke="#0077aa" stroke-width="1"/>
-            <line x1="125" y1="48" x2="125" y2="72" stroke="#003355" stroke-width="0.5"/>
-            <line x1="135" y1="48" x2="135" y2="72" stroke="#003355" stroke-width="0.5"/>
-            <line x1="145" y1="48" x2="145" y2="72" stroke="#003355" stroke-width="0.5"/>
-            <!-- Arms -->
-            <rect x="45" y="58" width="20" height="4" fill="#0a2030"/>
-            <rect x="95" y="58" width="20" height="4" fill="#0a2030"/>
-            <!-- Body -->
-            <rect x="55" y="28" width="50" height="64" rx="4" fill="#0a1a2a" stroke="#00b4ff" stroke-width="1.5"/>
-            <rect x="60" y="33" width="40" height="22" rx="2" fill="rgba(0,60,100,0.5)" stroke="#0077aa" stroke-width="0.5"/>
-            <!-- ILSA seismometer label -->
-            <text x="80" y="63" text-anchor="middle" fill="#0077aa" font-size="5" font-family="monospace">ILSA</text>
-            <rect x="63" y="67" width="34" height="18" rx="1" fill="rgba(0,40,80,0.6)" stroke="#005588" stroke-width="0.5"/>
-            <!-- Engine -->
-            <ellipse cx="80" cy="94" rx="8" ry="4" fill="rgba(0,180,255,0.2)" stroke="#00b4ff" stroke-width="0.5"/>
-            <!-- Antenna -->
-            <line x1="80" y1="28" x2="80" y2="14" stroke="#00b4ff" stroke-width="1"/>
-            <circle cx="80" cy="12" r="4" fill="none" stroke="#00b4ff" stroke-width="1"/>
-            <!-- Status LEDs -->
-            <circle cx="64" cy="40" r="2" fill="#00ff88" opacity="0.9"><animate attributeName="opacity" values="0.9;0.2;0.9" dur="2s" repeatCount="indefinite"/></circle>
-            <circle cx="80" cy="40" r="2" fill="#00b4ff" opacity="0.9"><animate attributeName="opacity" values="0.9;0.3;0.9" dur="1.5s" repeatCount="indefinite"/></circle>
-            <circle cx="96" cy="40" r="2" fill="#ffaa00" id="ledAnomaly" opacity="0.5"/>
-          </svg>
-        </div>
-      </div>
-
-      <!-- Subsystem health bars — driven by anomaly_score -->
-      <div class="panel">
-        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
-        <div class="ptitle">SUBSYSTEM HEALTH</div>
-        <div class="sub-list" id="subList"></div>
-      </div>
-
-      <!-- Live sensor table — all fields from data.sensors -->
-      <div class="panel">
-        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
-        <div class="ptitle">TELEMETRY STREAM · ALL SENSORS</div>
-        <div style="max-height:200px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;">
-          <table class="s-tbl">
-            <thead><tr><th>SENSOR FIELD</th><th>VALUE</th></tr></thead>
-            <tbody id="sensorTbody"></tbody>
-          </table>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- ═ CENTER ═ -->
-    <div class="center-col">
-
-      <!-- Live stat cards from WebSocket -->
-      <div class="panel" style="padding:12px;">
-        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
-        <div class="stat-row">
-          <div class="stat-card">
-            <div class="stat-lbl">ANOMALY SCORE</div>
-            <div class="stat-val g" id="scoreVal">—</div>
-            <div class="stat-sub" id="scoreStatus" style="color:var(--text-label);">AWAITING DATA</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-lbl">xTemp</div>
-            <div class="stat-val c" id="xTempVal">—</div>
-            <div class="stat-sub">temperature X</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-lbl">yTemp · zTemp</div>
-            <div class="stat-val c" style="font-size:11px;" id="yzTempVal">— / —</div>
-            <div class="stat-sub">temperature Y · Z</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-lbl">FINE ACCEL Z</div>
-            <div class="stat-val a" id="fineZVal">—</div>
-            <div class="stat-sub">CNN vibration input</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Temperature chart: xTemp, yTemp, zTemp -->
-      <div class="panel">
-        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
-        <div class="ptitle">TEMPERATURE SENSORS · xTemp / yTemp / zTemp</div>
-        <div class="chart-wrap" style="height:130px;"><canvas id="tempChart"></canvas></div>
-        <div class="chart-legend">
-          <span style="color:#00b4ff;">─ xTemp</span>
-          <span style="color:#00ff88;">─ yTemp</span>
-          <span style="color:#ffaa00;">─ zTemp</span>
-        </div>
-      </div>
-
-      <!-- Acceleration chart: all 6 acceleration fields -->
-      <div class="panel">
-        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
-        <div class="ptitle">ACCELERATION · X/Y/Z FINE + COARSE</div>
-        <div class="chart-wrap" style="height:130px;"><canvas id="accChart"></canvas></div>
-        <div class="chart-legend">
-          <span style="color:#00b4ff;">─ Fine X</span>
-          <span style="color:#00ff88;">─ Fine Y</span>
-          <span style="color:#ffaa00;">─ Fine Z (CNN input)</span>
-          <span style="color:#aa44ff;">─ Coarse X</span>
-          <span style="color:#ff6644;">─ Coarse Y</span>
-          <span style="color:#44ffcc;">─ Coarse Z</span>
-        </div>
-      </div>
-
-      <!-- Anomaly event feed -->
-      <div class="panel">
-        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
-        <div class="ptitle">ANOMALY DETECTION FEED</div>
-        <div class="anom-scroll" id="anomFeed">
-          <div class="anom-row">
-            <div class="sev n"></div>
-            <span class="a-time">—</span>
-            <span class="a-msg" style="color:var(--text-label);">Awaiting telemetry stream…</span>
-            <span class="a-sys">—</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- AI Copilot — calls /ask, shows which model ran -->
-      <div class="panel">
-        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
-        <div class="ptitle">AI COPILOT · /ask · OLLAMA llama3</div>
-
-        <!-- Model indicator row — shows which model is active for query -->
-        <div class="ai-models-row">
-          <div class="model-chip lstm" id="chip_lstm">
-            <div class="model-name" style="color:var(--cyan);">LSTM</div>
-            <div class="model-trigger">anomaly</div>
-          </div>
-          <div class="model-chip cnn" id="chip_cnn">
-            <div class="model-name" style="color:var(--green);">CNN</div>
-            <div class="model-trigger">pattern</div>
-          </div>
-          <div class="model-chip trans" id="chip_trans">
-            <div class="model-name" style="color:var(--amber);">TRANSFORMER</div>
-            <div class="model-trigger">predict</div>
-          </div>
-          <div class="model-chip gnn" id="chip_gnn">
-            <div class="model-name" style="color:var(--purple);">GNN</div>
-            <div class="model-trigger">cause</div>
-          </div>
-        </div>
-
-        <div class="ai-out" id="aiOut">
-          <span style="color:var(--text-label);">// AI COPILOT ONLINE — Ollama llama3 via /ask endpoint.</span><br>
-          <span style="color:var(--cyan-dim);">// Keywords route to models: "anomaly"→LSTM · "pattern"→CNN · "predict"→Transformer · "cause"→GNN</span>
-        </div>
-        <div class="ai-input-row">
-          <div class="ai-pfx">&gt;_</div>
-          <input class="ai-input" id="aiIn" type="text" placeholder="Ask about anomaly, pattern, prediction, or cause…" autocomplete="off">
-          <button class="ai-btn" id="aiBtn">QUERY</button>
-        </div>
-        <div class="chips">
-          <span class="chip" onclick="askAI('Is there an anomaly in the current sensor data?')">Anomaly? (LSTM)</span>
-          <span class="chip" onclick="askAI('What vibration pattern is detected?')">Pattern (CNN)</span>
-          <span class="chip" onclick="askAI('Predict the next temperature reading')">Predict (Transformer)</span>
-          <span class="chip" onclick="askAI('What is the cause of this anomaly?')">Cause (GNN)</span>
-          <span class="chip" onclick="askAI('Summarize the current mission health status')">Mission summary</span>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- ═ RIGHT ═ -->
-    <div class="right-col">
-
-      <!-- Health ring — derived from anomaly_score -->
-      <div class="panel">
-        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
-        <div class="ptitle">HEALTH INDEX</div>
-        <div class="ring-wrap">
-          <div class="ring-svg-wrap">
-            <svg viewBox="0 0 128 128">
-              <circle class="ring-bg" cx="64" cy="64" r="52"/>
-              <circle class="ring-fg" id="ringFg" cx="64" cy="64" r="52"
-                stroke="var(--green)"
-                style="stroke-dashoffset:33;filter:drop-shadow(0 0 6px var(--green))"/>
-            </svg>
-            <div class="ring-inner">
-              <div class="ring-num" id="ringNum" style="color:var(--green);">—</div>
-              <div class="ring-lbl">HEALTH INDEX</div>
-            </div>
-          </div>
-          <div class="ring-status" id="ringStatus" style="color:var(--green);">AWAITING</div>
-          <div class="ring-sub" id="ringTime">Last update: —</div>
-        </div>
-      </div>
-
-      <!-- Anomaly score sparkline -->
-      <div class="panel">
-        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
-        <div class="ptitle">ANOMALY SCORE · HISTORY</div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-label);">threshold: <span style="color:var(--amber);">0.05</span> warn · <span style="color:var(--red);">0.20</span> crit</span>
-          <span style="font-family:var(--font-mono);font-size:10px;" id="scoreSparkVal">—</span>
-        </div>
-        <div class="score-history"><canvas id="scoreChart"></canvas></div>
-      </div>
-
-      <!-- Model outputs — live results from each model on each packet -->
-      <div class="panel">
-        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
-        <div class="ptitle">MODEL OUTPUTS · LIVE</div>
-        <div class="model-outputs">
-          <div class="model-out-card" id="out_lstm">
-            <div class="model-out-header">
-              <span class="model-out-name" style="color:var(--cyan);">LSTM</span>
-              <span class="model-out-badge badge-normal" id="badge_lstm">NORMAL</span>
-            </div>
-            <div class="model-out-val" id="val_lstm">Awaiting data…</div>
-          </div>
-          <div class="model-out-card" id="out_cnn">
-            <div class="model-out-header">
-              <span class="model-out-name" style="color:var(--green);">CNN</span>
-              <span class="model-out-badge badge-normal" id="badge_cnn">NORMAL</span>
-            </div>
-            <div class="model-out-val" id="val_cnn">Awaiting data…</div>
-          </div>
-          <div class="model-out-card" id="out_trans">
-            <div class="model-out-header">
-              <span class="model-out-name" style="color:var(--amber);">TRANSFORMER</span>
-              <span class="model-out-badge badge-normal" id="badge_trans">NORMAL</span>
-            </div>
-            <div class="model-out-val" id="val_trans">Awaiting data…</div>
-          </div>
-          <div class="model-out-card" id="out_gnn">
-            <div class="model-out-header">
-              <span class="model-out-name" style="color:var(--purple);">GNN</span>
-              <span class="model-out-badge badge-normal" id="badge_gnn">STRUCT</span>
-            </div>
-            <div class="model-out-val" id="val_gnn">Awaiting data…</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Session stats -->
-      <div class="panel">
-        <div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
-        <div class="ptitle">SESSION STATS</div>
-        <div class="mini-stats">
-          <div class="mini-stat"><div class="mini-stat-lbl">PACKETS RX</div><div class="mini-stat-val" id="pktCount">0</div></div>
-          <div class="mini-stat"><div class="mini-stat-lbl">EVENTS</div><div class="mini-stat-val" id="anomCount">0</div></div>
-          <div class="mini-stat"><div class="mini-stat-lbl">CRITICALS</div><div class="mini-stat-val" id="critCount" style="color:var(--red);">0</div></div>
-          <div class="mini-stat"><div class="mini-stat-lbl">WARNINGS</div><div class="mini-stat-val" id="warnCount" style="color:var(--amber);">0</div></div>
-        </div>
-      </div>
-
-    </div>
+<!-- HEADER -->
+<header>
+  <div class="hl">
+    <div class="hid">MISSION // CH3-ILSA · ENGINE v2.0 · PORT 9000</div>
+    <div class="hsub">CHANDRAYAAN-3 · ILSA SEISMOMETER ARRAY</div>
   </div>
+  <div class="hc">
+    <div class="title">SPACECRAFT HEALTH AI</div>
+    <div class="subtitle">LSTM · CNN · TRANSFORMER · GNN · REPORT · VISION AI</div>
+  </div>
+  <div class="hr">
+    <div class="wsbadge"><div class="wsd" id="wsd"></div><span id="wsl" style="color:var(--red)">CONNECTING…</span></div>
+    <div class="clk" id="clk">00:00:00 UTC</div>
+  </div>
+</header>
 
-  <!-- ══ FOOTER ══ -->
-  <footer>
-    <div class="f-stat">WEBSOCKET <span class="f-val" style="margin-left:4px;">ws://127.0.0.1:9000/telemetry</span></div>
-    <div class="f-div"></div>
-    <div class="f-stat">AI <span class="f-val" style="margin-left:4px;">GET /ask?question= · Ollama llama3</span></div>
-    <div class="f-div"></div>
-    <div class="f-stat">DATASET <span class="f-val" style="margin-left:4px;">CH3-ILSA Calibrated CSVs</span></div>
-    <div class="f-div"></div>
-    <div class="met">SESSION &nbsp;<span id="met">00d 00h 00m 00s</span></div>
-    <div class="f-div"></div>
-    <div class="f-stat">LAST PACKET <span class="f-val" style="margin-left:4px;" id="lastPkt">—</span></div>
-    <div class="f-div"></div>
-    <div class="f-stat">MODELS <span class="f-val" style="margin-left:4px;">LSTM · CNN · TRANSFORMER · GNN</span></div>
-  </footer>
+<!-- MAIN GRID -->
+<div class="grid">
 
-</div>
+  <!-- ═ LEFT ═ -->
+  <div class="lc">
+    <div class="p"><div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+      <div class="pt">CHANDRAYAAN-3 · ILSA PAYLOAD</div>
+      <div class="scw">
+        <div class="orb"></div><div class="orb"></div>
+        <svg class="scsvg" viewBox="0 0 160 120" fill="none">
+          <rect x="5" y="48" width="40" height="24" rx="2" fill="rgba(0,80,140,.8)" stroke="#0077aa" stroke-width="1"/>
+          <line x1="15" y1="48" x2="15" y2="72" stroke="#003355" stroke-width=".5"/><line x1="25" y1="48" x2="25" y2="72" stroke="#003355" stroke-width=".5"/><line x1="35" y1="48" x2="35" y2="72" stroke="#003355" stroke-width=".5"/>
+          <rect x="115" y="48" width="40" height="24" rx="2" fill="rgba(0,80,140,.8)" stroke="#0077aa" stroke-width="1"/>
+          <line x1="125" y1="48" x2="125" y2="72" stroke="#003355" stroke-width=".5"/><line x1="135" y1="48" x2="135" y2="72" stroke="#003355" stroke-width=".5"/><line x1="145" y1="48" x2="145" y2="72" stroke="#003355" stroke-width=".5"/>
+          <rect x="45" y="58" width="20" height="4" fill="#0a2030"/><rect x="95" y="58" width="20" height="4" fill="#0a2030"/>
+          <rect x="55" y="28" width="50" height="64" rx="4" fill="#0a1a2a" stroke="#00b4ff" stroke-width="1.5"/>
+          <rect x="60" y="33" width="40" height="22" rx="2" fill="rgba(0,60,100,.5)" stroke="#0077aa" stroke-width=".5"/>
+          <text x="80" y="52" text-anchor="middle" fill="#0077aa" font-size="5" font-family="monospace">ILSA</text>
+          <rect x="63" y="57" width="34" height="20" rx="1" fill="rgba(0,40,80,.6)" stroke="#005588" stroke-width=".5"/>
+          <ellipse cx="80" cy="94" rx="8" ry="4" fill="rgba(0,180,255,.2)" stroke="#00b4ff" stroke-width=".5"/>
+          <line x1="80" y1="28" x2="80" y2="14" stroke="#00b4ff" stroke-width="1"/><circle cx="80" cy="12" r="4" fill="none" stroke="#00b4ff" stroke-width="1"/>
+          <circle cx="64" cy="40" r="2" fill="#00ff88" opacity=".9"><animate attributeName="opacity" values=".9;.2;.9" dur="2s" repeatCount="indefinite"/></circle>
+          <circle cx="80" cy="40" r="2" fill="#00b4ff" opacity=".9"><animate attributeName="opacity" values=".9;.3;.9" dur="1.5s" repeatCount="indefinite"/></circle>
+          <circle cx="96" cy="40" r="2" id="led3" fill="#ffaa00" opacity=".5"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="p"><div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+      <div class="pt">SUBSYSTEM HEALTH · GNN</div>
+      <div class="sbl" id="subList"></div>
+    </div>
+
+    <div class="p"><div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+      <div class="pt">TELEMETRY · ALL SENSORS</div>
+      <div style="max-height:185px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--b) transparent">
+        <table class="stbl"><thead><tr><th>FIELD</th><th>VALUE</th></tr></thead><tbody id="stbody"></tbody></table>
+      </div>
+    </div>
+  </div><!-- /left -->
+
+  <!-- ═ CENTER ═ -->
+  <div class="cc">
+
+    <!-- Stat cards -->
+    <div class="p" style="padding:11px"><div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+      <div class="statrow">
+        <div class="sc2"><div class="sl">ANOMALY SCORE</div><div class="sv g" id="sv_score">—</div><div class="ss" id="sv_status" style="color:var(--tl)">AWAITING</div></div>
+        <div class="sc2"><div class="sl">LSTM Z-SCORE</div><div class="sv c" id="sv_z">—</div><div class="ss">std deviations</div></div>
+        <div class="sc2"><div class="sl">CNN ACCEL RMS</div><div class="sv a" id="sv_rms">—</div><div class="ss" id="sv_cnn_s">fine axes</div></div>
+        <div class="sc2"><div class="sl">TRANSFORMER</div><div class="sv p" id="sv_pred">—</div><div class="ss" id="sv_trend">pred xTemp</div></div>
+      </div>
+    </div>
+
+    <!-- Temp chart -->
+    <div class="p"><div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+      <div class="pt">TEMPERATURE · xTemp / yTemp / zTemp + TRANSFORMER PREDICTION</div>
+      <div class="cw" style="height:110px"><canvas id="tchart"></canvas></div>
+      <div class="cleg">
+        <span style="color:#00b4ff">─ xTemp</span><span style="color:#00ff88">─ yTemp</span>
+        <span style="color:#ffaa00">─ zTemp</span><span style="color:#aa44ff">╌ pred (Transformer)</span>
+      </div>
+    </div>
+
+    <!-- Accel chart -->
+    <div class="p"><div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+      <div class="pt">ACCELERATION · FINE + COARSE · CNN INPUT</div>
+      <div class="cw" style="height:110px"><canvas id="achart"></canvas></div>
+      <div class="cleg">
+        <span style="color:#00b4ff">─ Fine X</span><span style="color:#00ff88">─ Fine Y</span>
+        <span style="color:#ffaa00">─ Fine Z</span><span style="color:#aa44ff">─ Coarse X</span>
+        <span style="color:#ff6644">─ Coarse Y</span><span style="color:#44ffcc">─ Coarse Z</span>
+      </div>
+    </div>
+
+    <!-- Anomaly feed -->
+    <div class="p"><div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+      <div class="pt">ANOMALY FEED · LSTM + CNN + GNN</div>
+      <div class="asc" id="afeed">
+        <div class="ar"><div class="sd n"></div><span class="at2">—</span><span class="am" style="color:var(--tl)">Awaiting telemetry…</span><span class="as2">—</span></div>
+      </div>
+    </div>
+
+    <!-- AI Copilot -->
+    <div class="p"><div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+      <div class="pt">AI COPILOT · /ask · OLLAMA llama3</div>
+      <div class="mtabs">
+        <div class="mtab" id="tab_lstm"><div class="mn" style="color:var(--cyan)">LSTM</div><div class="mtr">anomaly</div></div>
+        <div class="mtab" id="tab_cnn"><div class="mn" style="color:var(--green)">CNN</div><div class="mtr">pattern/vibration</div></div>
+        <div class="mtab" id="tab_trans"><div class="mn" style="color:var(--amber)">TRANSFORMER</div><div class="mtr">predict/forecast</div></div>
+        <div class="mtab" id="tab_gnn"><div class="mn" style="color:var(--purple)">GNN</div><div class="mtr">cause/graph</div></div>
+      </div>
+      <div class="aio" id="aiout">
+        <span style="color:var(--tl)">// AI COPILOT v2 — all 4 models · context-aware · llama3</span>
+      </div>
+      <div class="airow">
+        <div class="aipfx">&gt;_</div>
+        <input class="aiinput" id="aiinput" type="text" placeholder="Ask about anomaly, vibration, temperature prediction, or root cause…" autocomplete="off">
+        <button class="aibtn" id="aibtn">QUERY</button>
+      </div>
+      <div class="chips">
+        <span class="chip" onclick="ask('Is there an anomaly in the current sensor data?')">Anomaly? (LSTM)</span>
+        <span class="chip" onclick="ask('What vibration pattern is detected?')">Vibration (CNN)</span>
+        <span class="chip" onclick="ask('Predict the next temperature reading')">Forecast (Transformer)</span>
+        <span class="chip" onclick="ask('What is the cause of the current subsystem state?')">Root cause (GNN)</span>
+      </div>
+    </div>
+
+    <!-- ══ REPORT GENERATOR ══ -->
+    <div class="p"><div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+      <div class="pt">MISSION REPORT GENERATOR</div>
+      <div class="report-panel" style="padding:0;background:none;border:none;margin:0">
+        <div class="report-btns">
+          <a class="rbtn html" id="btnHtml" href="#" onclick="generateReport('html');return false">
+            <div class="rbtn-icon">🌐</div>
+            <div class="rbtn-label" style="color:var(--cyan)">HTML REPORT</div>
+            <div class="rbtn-sub">Opens in browser<br>Charts + Narrative</div>
+          </a>
+          <a class="rbtn pdf" id="btnPdf" href="#" onclick="generateReport('pdf');return false">
+            <div class="rbtn-icon">📄</div>
+            <div class="rbtn-label" style="color:var(--red)">PDF REPORT</div>
+            <div class="rbtn-sub">Downloads PDF<br>Professional format</div>
+          </a>
+        </div>
+        <div class="report-info" id="reportInfo">
+          Report will include:<br>
+          ✦ Anomaly score history chart &nbsp;✦ Temperature sensor graph<br>
+          ✦ Acceleration sensor graph &nbsp;✦ All 4 model outputs snapshot<br>
+          ✦ AI-written mission health narrative (llama3)<br>
+          <span style="color:var(--amber)">Packets captured so far: <span id="rptPktCount">0</span></span>
+        </div>
+        <div class="report-generating" id="reportSpinner">
+          <div class="spinner"></div>
+          <span id="reportSpinMsg">Generating report — rendering charts + AI narrative…</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ IMAGE ANALYSIS ══ -->
+    <div class="p"><div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+      <div class="pt">IMAGE ANALYSIS · VISION AI · llava / llama3</div>
+
+      <!-- Image type selector -->
+      <div class="img-type-row">
+        <div class="itype selected" data-type="sensor_chart"    onclick="selectImgType(this)">📊 SENSOR CHART</div>
+        <div class="itype"          data-type="satellite_image" onclick="selectImgType(this)">🛰 SATELLITE IMG</div>
+        <div class="itype"          data-type="seismogram"      onclick="selectImgType(this)">〰 SEISMOGRAM</div>
+        <div class="itype"          data-type="anomaly_plot"    onclick="selectImgType(this)">⚠ ANOMALY PLOT</div>
+      </div>
+
+      <!-- Drop zone -->
+      <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()"
+           ondragover="event.preventDefault();this.classList.add('drag')"
+           ondragleave="this.classList.remove('drag')"
+           ondrop="handleDrop(event)">
+        <div class="dz-icon">📡</div>
+        <div class="dz-label">DROP IMAGE OR CLICK TO UPLOAD</div>
+        <div class="dz-sub">PNG · JPG · WEBP · Any spacecraft / sensor image</div>
+        <img id="dzPreview" class="dz-preview" alt="preview"/>
+        <div id="dzFilename" style="font-family:var(--mono);font-size:8px;color:var(--green);display:none"></div>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" onchange="handleFileSelect(event)">
+
+      <button class="analyze-btn" id="analyzeBtn" disabled onclick="analyzeImage()">
+        ⬡ ANALYZE IMAGE WITH AI
+      </button>
+
+      <!-- Analysis output -->
+      <div class="img-out" id="imgOut">
+        <span style="color:var(--tl)">// Upload an image to analyze with Ollama llava vision model</span><br>
+        <span style="color:var(--tl)">// Supports: sensor charts · satellite imagery · seismograms · anomaly plots</span><br>
+        <span style="color:var(--tl)">// AI will correlate image with current live telemetry context</span>
+      </div>
+    </div>
+
+  </div><!-- /center -->
+
+  <!-- ═ RIGHT ═ -->
+  <div class="rc">
+
+    <!-- Health ring -->
+    <div class="p"><div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+      <div class="pt">HEALTH INDEX · LSTM</div>
+      <div class="rw">
+        <div class="rsw">
+          <svg viewBox="0 0 126 126">
+            <circle class="rbg" cx="63" cy="63" r="52"/>
+            <circle class="rfg" id="rfg" cx="63" cy="63" r="52" stroke="var(--green)" style="stroke-dashoffset:33;filter:drop-shadow(0 0 6px var(--green))"/>
+          </svg>
+          <div class="ri"><div class="rnum" id="rnum" style="color:var(--green)">—</div><div class="rlbl">HEALTH INDEX</div></div>
+        </div>
+        <div class="rstat" id="rstat" style="color:var(--green)">AWAITING</div>
+        <div class="rsub" id="rsub">Last update: —</div>
+      </div>
+    </div>
+
+    <!-- Score history sparkline -->
+    <div class="p"><div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+      <div class="pt">SCORE HISTORY · LSTM</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+        <span style="font-family:var(--mono);font-size:7px;color:var(--tl)">warn <span style="color:var(--amber)">0.05</span> · crit <span style="color:var(--red)">0.20</span></span>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--cyan)" id="scoresp">—</span>
+      </div>
+      <div class="sh"><canvas id="schart"></canvas></div>
+    </div>
+
+    <!-- 4 Model output cards -->
+    <div class="p"><div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+      <div class="pt">MODEL OUTPUTS · ALL 4 · LIVE</div>
+      <div class="moc">
+        <div class="mocard" id="mc_lstm"><div class="moh"><span class="moname" style="color:var(--cyan)">LSTM</span><span class="mobadge bn" id="mb_lstm">NORMAL</span></div><div class="moval" id="mv_lstm">Awaiting…</div></div>
+        <div class="mocard" id="mc_cnn"><div class="moh"><span class="moname" style="color:var(--green)">CNN</span><span class="mobadge bn" id="mb_cnn">NORMAL</span></div><div class="moval" id="mv_cnn">Awaiting…</div></div>
+        <div class="mocard" id="mc_trans"><div class="moh"><span class="moname" style="color:var(--amber)">TRANSFORMER</span><span class="mobadge bn" id="mb_trans">STABLE</span></div><div class="moval" id="mv_trans">Awaiting…</div></div>
+        <div class="mocard" id="mc_gnn"><div class="moh"><span class="moname" style="color:var(--purple)">GNN</span><span class="mobadge bp" id="mb_gnn">STRUCTURE</span></div><div class="moval" id="mv_gnn">Awaiting…</div></div>
+      </div>
+    </div>
+
+    <!-- Session stats -->
+    <div class="p"><div class="k tl"></div><div class="k tr"></div><div class="k bl"></div><div class="k br"></div>
+      <div class="pt">SESSION STATS</div>
+      <div class="mss">
+        <div class="ms"><div class="msl">PACKETS RX</div><div class="msv" id="pkt">0</div></div>
+        <div class="ms"><div class="msl">EVENTS</div><div class="msv" id="evts">0</div></div>
+        <div class="ms"><div class="msl">CRITICALS</div><div class="msv" id="crits" style="color:var(--red)">0</div></div>
+        <div class="ms"><div class="msl">WARNINGS</div><div class="msv" id="warns" style="color:var(--amber)">0</div></div>
+      </div>
+    </div>
+
+  </div><!-- /right -->
+</div><!-- /grid -->
+
+<!-- FOOTER -->
+<footer>
+  <div class="fs">WS <span class="fv" style="margin-left:3px">ws://127.0.0.1:9000/telemetry</span></div>
+  <div class="fd"></div>
+  <div class="fs">REPORT <span class="fv" style="margin-left:3px">/report/html · /report/pdf</span></div>
+  <div class="fd"></div>
+  <div class="fs">VISION <span class="fv" style="margin-left:3px">POST /analyze-image · llava</span></div>
+  <div class="fd"></div>
+  <div class="met">SESSION &nbsp;<span id="met">00d 00h 00m 00s</span></div>
+  <div class="fd"></div>
+  <div class="fs">FILE <span class="fv" style="margin-left:3px;max-width:140px;overflow:hidden;text-overflow:ellipsis" id="finfo">—</span></div>
+  <div class="fd"></div>
+  <div class="fs">PKTS <span class="fv" style="margin-left:3px" id="fpkt">0</span> LAST <span class="fv" style="margin-left:3px" id="flast">—</span></div>
+</footer>
+</div><!-- /wrap -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script>
+// ═══ STARFIELD ═══
+(()=>{const sf=document.getElementById('sf');for(let i=0;i<100;i++){const s=document.createElement('div');s.className='st';const z=Math.random()*1.4+.3;s.style.cssText=`width:${z}px;height:${z}px;left:${Math.random()*100}%;top:${Math.random()*100}%;--d:${(Math.random()*4+2).toFixed(1)}s;--a:${(Math.random()*.15+.03).toFixed(2)};--b2:${(Math.random()*.5+.15).toFixed(2)}`;sf.appendChild(s);}})();
 
-// ══════════════════════════════════════════════════
-//  STARFIELD
-// ══════════════════════════════════════════════════
-(()=>{
-  const sf=document.getElementById('sf');
-  for(let i=0;i<100;i++){
-    const s=document.createElement('div');s.className='star';
-    const sz=Math.random()*1.4+0.3;
-    s.style.cssText=`width:${sz}px;height:${sz}px;left:${Math.random()*100}%;top:${Math.random()*100}%;--d:${(Math.random()*4+2).toFixed(1)}s;--o1:${(Math.random()*0.15+0.03).toFixed(2)};--o2:${(Math.random()*0.5+0.15).toFixed(2)};`;
-    sf.appendChild(s);
-  }
-})();
+// ═══ CLOCK ═══
+setInterval(()=>{document.getElementById('clk').textContent=new Date().toUTCString().match(/\d\d:\d\d:\d\d/)[0]+' UTC';},1000);
+let sec=0;setInterval(()=>{sec++;const d=Math.floor(sec/86400),h=Math.floor((sec%86400)/3600),m=Math.floor((sec%3600)/60),s=sec%60;document.getElementById('met').textContent=`${String(d).padStart(2,'0')}d ${String(h).padStart(2,'0')}h ${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s`;},1000);
 
-// ══════════════════════════════════════════════════
-//  CLOCK + SESSION TIMER
-// ══════════════════════════════════════════════════
-setInterval(()=>{
-  document.getElementById('clock').textContent=
-    new Date().toUTCString().match(/\d\d:\d\d:\d\d/)[0]+' UTC';
-},1000);
-let sessionSec=0;
-setInterval(()=>{
-  sessionSec++;
-  const d=Math.floor(sessionSec/86400),h=Math.floor((sessionSec%86400)/3600),
-        m=Math.floor((sessionSec%3600)/60),s=sessionSec%60;
-  document.getElementById('met').textContent=
-    `${String(d).padStart(2,'0')}d ${String(h).padStart(2,'0')}h ${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s`;
-},1000);
+// ═══ CHARTS ═══
+const N=200,bo={animation:false,responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(5,13,20,.95)',borderColor:'rgba(0,180,255,.3)',borderWidth:1,titleColor:'#4a7a99',bodyColor:'#c8e8ff',titleFont:{family:"'Share Tech Mono'"},bodyFont:{family:"'Share Tech Mono'",size:8}}},scales:{x:{display:false},y:{grid:{color:'rgba(0,180,255,.06)',drawBorder:false},ticks:{color:'#2a5a77',font:{family:"'Share Tech Mono'",size:7}}}}};
+const tc=new Chart(document.getElementById('tchart'),{type:'line',data:{labels:Array(N).fill(''),datasets:[{data:[],borderColor:'#00b4ff',borderWidth:1.5,fill:false,pointRadius:0,tension:.4},{data:[],borderColor:'#00ff88',borderWidth:1.5,fill:false,pointRadius:0,tension:.4},{data:[],borderColor:'#ffaa00',borderWidth:1.5,fill:false,pointRadius:0,tension:.4},{data:[],borderColor:'#aa44ff',borderWidth:1,fill:false,pointRadius:0,tension:.4,borderDash:[4,4]}]},options:bo});
+const ac=new Chart(document.getElementById('achart'),{type:'line',data:{labels:Array(N).fill(''),datasets:[{data:[],borderColor:'#00b4ff',borderWidth:1.5,fill:false,pointRadius:0,tension:.4},{data:[],borderColor:'#00ff88',borderWidth:1.5,fill:false,pointRadius:0,tension:.4},{data:[],borderColor:'#ffaa00',borderWidth:1.5,fill:false,pointRadius:0,tension:.4},{data:[],borderColor:'#aa44ff',borderWidth:1,fill:false,pointRadius:0,tension:.4},{data:[],borderColor:'#ff6644',borderWidth:1,fill:false,pointRadius:0,tension:.4},{data:[],borderColor:'#44ffcc',borderWidth:1,fill:false,pointRadius:0,tension:.4}]},options:bo});
+const sc=new Chart(document.getElementById('schart'),{type:'line',data:{labels:Array(N).fill(''),datasets:[{data:[],borderColor:'#ff3355',borderWidth:1.5,fill:true,backgroundColor:'rgba(255,51,85,.07)',pointRadius:0,tension:.4}]},options:{...bo,scales:{...bo.scales,y:{...bo.scales.y,min:0,max:1}}}});
+function push(ch,i,v){if(v==null||isNaN(v))return;const d=ch.data.datasets[i].data;d.push(v);if(d.length>N)d.shift();}
 
-// ══════════════════════════════════════════════════
-//  CHARTS
-// ══════════════════════════════════════════════════
-const MAXPTS=200;
-const baseOpts={
-  animation:false,responsive:true,maintainAspectRatio:false,
-  interaction:{mode:'index',intersect:false},
-  plugins:{legend:{display:false},tooltip:{
-    backgroundColor:'rgba(5,13,20,0.95)',borderColor:'rgba(0,180,255,0.3)',borderWidth:1,
-    titleColor:'#4a7a99',bodyColor:'#c8e8ff',
-    titleFont:{family:"'Share Tech Mono'"},bodyFont:{family:"'Share Tech Mono'",size:9}
-  }},
-  scales:{
-    x:{display:false},
-    y:{grid:{color:'rgba(0,180,255,0.06)',drawBorder:false},
-       ticks:{color:'#2a5a77',font:{family:"'Share Tech Mono'",size:8}}}
-  }
-};
+// ═══ SUBSYSTEMS ═══
+const SUBS=[{id:'sub_t',name:'THERMAL CTRL',key:'thermal'},{id:'sub_s',name:'STRUCTURAL',key:'structural'},{id:'sub_n',name:'NAVIGATION',key:'navigation'},{id:'sub_p',name:'POWER SYSTEM',key:'power'},{id:'sub_i',name:'ILSA PAYLOAD',key:'thermal'}];
+const sl=document.getElementById('subList');
+SUBS.forEach(s=>{sl.innerHTML+=`<div class="sbi"><div><div class="sbn">${s.name}</div><div class="sbtr"><div class="sbf g" id="${s.id}" style="width:100%"></div></div></div><div class="sbp g" id="${s.id}_p">100%</div></div>`;});
+function updateSubs(gnn,score){const sc2=gnn?.subsystem_scores||{};SUBS.forEach(s=>{let raw=sc2[s.key];if(raw==null)raw=Math.max(0,1-score);const h=Math.round(raw*100),cls=h>=70?'g':h>=40?'a':'r';const el=document.getElementById(s.id),p=document.getElementById(s.id+'_p');if(el){el.style.width=h+'%';el.className='sbf '+cls;}if(p){p.textContent=h+'%';p.className='sbp '+cls;}});}
 
-// Temperature: xTemp, yTemp, zTemp — exact field names from data.sensors
-const tempChart=new Chart(document.getElementById('tempChart'),{
-  type:'line',
-  data:{labels:Array(MAXPTS).fill(''),datasets:[
-    {label:'xTemp', data:[],borderColor:'#00b4ff',borderWidth:1.5,fill:false,pointRadius:0,tension:0.4},
-    {label:'yTemp', data:[],borderColor:'#00ff88',borderWidth:1.5,fill:false,pointRadius:0,tension:0.4},
-    {label:'zTemp', data:[],borderColor:'#ffaa00',borderWidth:1.5,fill:false,pointRadius:0,tension:0.4},
-  ]},options:baseOpts
-});
-
-// Acceleration: all 6 fields — exact names from data.sensors
-const accChart=new Chart(document.getElementById('accChart'),{
-  type:'line',
-  data:{labels:Array(MAXPTS).fill(''),datasets:[
-    {label:'X Fine Acceleration', data:[],borderColor:'#00b4ff',borderWidth:1.5,fill:false,pointRadius:0,tension:0.4},
-    {label:'Y Fine Acceleration', data:[],borderColor:'#00ff88',borderWidth:1.5,fill:false,pointRadius:0,tension:0.4},
-    {label:'Z Fine Acceleration', data:[],borderColor:'#ffaa00',borderWidth:1.5,fill:false,pointRadius:0,tension:0.4},
-    {label:'X Coarse Acceleration',data:[],borderColor:'#aa44ff',borderWidth:1,fill:false,pointRadius:0,tension:0.4},
-    {label:'Y Coarse Acceleration',data:[],borderColor:'#ff6644',borderWidth:1,fill:false,pointRadius:0,tension:0.4},
-    {label:'Z Coarse Acceleration',data:[],borderColor:'#44ffcc',borderWidth:1,fill:false,pointRadius:0,tension:0.4},
-  ]},options:baseOpts
-});
-
-// Anomaly score history
-const scoreChart=new Chart(document.getElementById('scoreChart'),{
-  type:'line',
-  data:{labels:Array(MAXPTS).fill(''),datasets:[
-    {label:'Score',data:[],borderColor:'#ff3355',borderWidth:1.5,
-     fill:true,backgroundColor:'rgba(255,51,85,0.08)',pointRadius:0,tension:0.4},
-    // threshold lines drawn via annotation plugin would need extra dep — use data instead
-  ]},
-  options:{...baseOpts,scales:{...baseOpts.scales,y:{...baseOpts.scales.y,min:0,max:0.5}}}
-});
-
-function push(chart,i,val){
-  if(val==null||isNaN(val))return;
-  const d=chart.data.datasets[i].data;
-  d.push(val);if(d.length>MAXPTS)d.shift();
-}
-
-// ══════════════════════════════════════════════════
-//  SUBSYSTEMS — 5 bars, each slightly offset from score
-// ══════════════════════════════════════════════════
-const SUBS=[
-  {id:'sub_thermal',  name:'THERMAL CTRL',  offset:0.00},
-  {id:'sub_structure',name:'STRUCTURE',     offset:0.02},
-  {id:'sub_nav',      name:'NAVIGATION',    offset:-0.01},
-  {id:'sub_power',    name:'POWER SYSTEM',  offset:0.01},
-  {id:'sub_ilsa',     name:'ILSA PAYLOAD',  offset:-0.015},
-];
-const subList=document.getElementById('subList');
-SUBS.forEach(s=>{
-  subList.innerHTML+=`
-    <div class="sub-item">
-      <div>
-        <div class="sub-name">${s.name}</div>
-        <div class="sub-track"><div class="sub-fill g" id="${s.id}" style="width:100%"></div></div>
-      </div>
-      <div class="sub-pct g" id="${s.id}_p">100%</div>
-    </div>`;
-});
-
-function updateSubsystems(score){
-  SUBS.forEach(s=>{
-    const h=Math.max(0,Math.min(100,Math.round((1-Math.min(score+s.offset,1))*100)));
-    const cls=h>=70?'g':h>=40?'a':'r';
-    const el=document.getElementById(s.id); const p=document.getElementById(s.id+'_p');
-    el.style.width=h+'%'; el.className='sub-fill '+cls;
-    p.textContent=h+'%'; p.className='sub-pct '+cls;
-  });
-}
-
-// ══════════════════════════════════════════════════
-//  HEALTH RING
-// ══════════════════════════════════════════════════
+// ═══ HEALTH RING ═══
 const CIRC=2*Math.PI*52;
-function updateRing(score){
-  const health=Math.round((1-Math.min(score,1))*100);
-  const offset=CIRC*(1-health/100);
-  const fg=document.getElementById('ringFg');
-  const color=score>0.2?'var(--red)':score>0.05?'var(--amber)':'var(--green)';
-  const txt=score>0.2?'CRITICAL':score>0.05?'WARNING':'NOMINAL';
-  fg.style.strokeDashoffset=offset; fg.style.stroke=color;
-  fg.style.filter=`drop-shadow(0 0 6px ${color})`;
-  const num=document.getElementById('ringNum');
-  num.textContent=health; num.style.color=color;
-  document.getElementById('ringStatus').textContent=txt;
-  document.getElementById('ringStatus').style.color=color;
-  document.getElementById('ringTime').textContent='Updated: '+new Date().toLocaleTimeString();
-}
+function updateRing(score){const h=Math.round((1-Math.min(score,1))*100),offset=CIRC*(1-h/100);const color=score>.2?'var(--red)':score>.05?'var(--amber)':'var(--green)';const fg=document.getElementById('rfg');fg.style.strokeDashoffset=offset;fg.style.stroke=color;fg.style.filter=`drop-shadow(0 0 6px ${color})`;const rn=document.getElementById('rnum');rn.textContent=h;rn.style.color=color;document.getElementById('rstat').textContent=score>.2?'CRITICAL':score>.05?'WARNING':'NOMINAL';document.getElementById('rstat').style.color=color;document.getElementById('rsub').textContent='Updated: '+new Date().toLocaleTimeString();}
 
-// ══════════════════════════════════════════════════
-//  MODEL OUTPUTS — mirror your ai_system.py logic client-side
-//  (shows same outputs LSTM/CNN/Transformer/GNN would give)
-// ══════════════════════════════════════════════════
-function updateModelOutputs(sensors, score){
-  // LSTM output (mirrors LSTMModel.run)
-  const lstmStatus=score>0.05?'ANOMALY':'NORMAL';
-  document.getElementById('badge_lstm').textContent=lstmStatus;
-  document.getElementById('badge_lstm').className='model-out-badge '+(score>0.05?'badge-anomaly':'badge-normal');
-  document.getElementById('val_lstm').textContent=`score: ${score.toFixed(4)} · status: ${lstmStatus} · xTemp: ${sensors.xTemp??'—'}`;
-
-  // CNN output (mirrors CNNModel.run — uses Z Fine Acceleration)
-  const vib=Math.abs(sensors['Z Fine Acceleration']||0);
-  const cnnPattern=vib>0.1?'VIBRATION_PATTERN':'NORMAL';
-  document.getElementById('badge_cnn').textContent=cnnPattern==='VIBRATION_PATTERN'?'VIBRATION':'NORMAL';
-  document.getElementById('badge_cnn').className='model-out-badge '+(cnnPattern==='VIBRATION_PATTERN'?'badge-warning':'badge-normal');
-  document.getElementById('val_cnn').textContent=`Z Fine Accel: ${vib.toFixed(4)} · pattern: ${cnnPattern}`;
-
-  // Transformer output (mirrors TransformerModel.run)
-  const predTemp=(sensors.xTemp||0)+0.5;
-  document.getElementById('badge_trans').textContent='PREDICT';
-  document.getElementById('badge_trans').className='model-out-badge badge-normal';
-  document.getElementById('val_trans').textContent=`pred_temp: ${predTemp.toFixed(3)} · based on xTemp: ${sensors.xTemp??'—'}`;
-
-  // GNN output (mirrors GNNModel.run)
-  document.getElementById('badge_gnn').textContent='STRUCT';
-  document.getElementById('val_gnn').textContent=`subsystem: structure · graph analysis: nominal`;
-}
-
-// ══════════════════════════════════════════════════
-//  STATUS CARDS
-// ══════════════════════════════════════════════════
+// ═══ STAT CARDS ═══
 function updateCards(data){
-  const s=data.sensors; const score=data.anomaly_score;
-  const el=document.getElementById('scoreVal');
-  const st=document.getElementById('scoreStatus');
-  el.textContent=score.toFixed(4);
-  if(score>0.2){
-    el.className='stat-val r'; st.textContent='● CRITICAL'; st.style.color='var(--red)';
-    document.getElementById('wsDot').className='ws-dot critical';
-    document.getElementById('wsLabel').textContent='⚠ ANOMALY DETECTED';
-    document.getElementById('wsLabel').style.color='var(--red)';
-    document.getElementById('ledAnomaly').setAttribute('fill','#ff3355');
-    document.getElementById('ledAnomaly').setAttribute('opacity','1');
-  } else if(score>0.05){
-    el.className='stat-val a'; st.textContent='▲ WARNING'; st.style.color='var(--amber)';
-    document.getElementById('wsDot').className='ws-dot warning';
-    document.getElementById('wsLabel').textContent='WARNING ACTIVE';
-    document.getElementById('wsLabel').style.color='var(--amber)';
-    document.getElementById('ledAnomaly').setAttribute('fill','#ffaa00');
-    document.getElementById('ledAnomaly').setAttribute('opacity','0.9');
-  } else {
-    el.className='stat-val g'; st.textContent='✓ NOMINAL'; st.style.color='var(--green)';
-    document.getElementById('wsDot').className='ws-dot live';
-    document.getElementById('wsLabel').textContent='ALL SYSTEMS NOMINAL';
-    document.getElementById('wsLabel').style.color='var(--green)';
-    document.getElementById('ledAnomaly').setAttribute('fill','#00ff88');
-    document.getElementById('ledAnomaly').setAttribute('opacity','0.5');
-  }
-  document.getElementById('xTempVal').textContent=s.xTemp??'—';
-  document.getElementById('yzTempVal').textContent=`${s.yTemp??'—'} / ${s.zTemp??'—'}`;
-  const fz=s['Z Fine Acceleration'];
-  document.getElementById('fineZVal').textContent=fz!=null?fz.toFixed(4):'—';
-  document.getElementById('scoreSparkVal').textContent=score.toFixed(4);
+  const score=data.anomaly_score||0,m=data.models||{},lstm=m.lstm||{},cnn=m.cnn||{},trans=m.transformer||{};
+  const se=document.getElementById('sv_score'),ss=document.getElementById('sv_status');
+  se.textContent=score.toFixed(4);
+  if(score>.2){se.className='sv r';ss.textContent='● CRITICAL';ss.style.color='var(--red)';document.getElementById('wsd').className='wsd crit';document.getElementById('wsl').textContent='⚠ ANOMALY';document.getElementById('wsl').style.color='var(--red)';document.getElementById('led3').setAttribute('fill','#ff3355');document.getElementById('led3').setAttribute('opacity','1');}
+  else if(score>.05){se.className='sv a';ss.textContent='▲ WARNING';ss.style.color='var(--amber)';document.getElementById('wsd').className='wsd warn';document.getElementById('wsl').textContent='WARNING ACTIVE';document.getElementById('wsl').style.color='var(--amber)';document.getElementById('led3').setAttribute('fill','#ffaa00');document.getElementById('led3').setAttribute('opacity','.9');}
+  else{se.className='sv g';ss.textContent='✓ NOMINAL';ss.style.color='var(--green)';document.getElementById('wsd').className='wsd live';document.getElementById('wsl').textContent='ALL SYSTEMS NOMINAL';document.getElementById('wsl').style.color='var(--green)';document.getElementById('led3').setAttribute('fill','#00ff88');document.getElementById('led3').setAttribute('opacity','.5');}
+  document.getElementById('sv_z').textContent=lstm.z_score!=null?lstm.z_score.toFixed(3):'—';
+  const re=document.getElementById('sv_rms');re.textContent=cnn.rms_accel!=null?cnn.rms_accel.toFixed(4):'—';
+  const cs=document.getElementById('sv_cnn_s');
+  if(cnn.pattern==='STRONG_VIBRATION'){re.className='sv r';cs.textContent='STRONG VIBRATION';}else if(cnn.pattern==='VIBRATION_PATTERN'){re.className='sv a';cs.textContent='VIBRATION';}else{re.className='sv a';cs.textContent='fine axes RMS';}
+  document.getElementById('sv_pred').textContent=trans.pred_xTemp!=null?trans.pred_xTemp.toFixed(3):'—';
+  const tr=document.getElementById('sv_trend');const trend=trans.trend||'STABLE';
+  tr.textContent=`${trend} · slope:${(trans.slope||0).toFixed(5)}`;
+  tr.style.color=trend==='RISING'?'var(--amber)':trend==='FALLING'?'var(--cyan)':'var(--green)';
+  document.getElementById('scoresp').textContent=score.toFixed(4);
 }
 
-// ══════════════════════════════════════════════════
-//  SENSOR TABLE — every key from data.sensors
-// ══════════════════════════════════════════════════
-function updateSensorTable(sensors){
-  let html='';
-  for(const k in sensors){
-    const v=sensors[k];
-    const fmt=typeof v==='number'?v.toFixed(6):v;
-    html+=`<tr><td>${k}</td><td>${fmt}</td></tr>`;
-  }
-  document.getElementById('sensorTbody').innerHTML=html;
+// ═══ MODEL CARDS ═══
+function flashCard(id){const el=document.getElementById(id);el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash');}
+function updateModelCards(m){
+  if(!m)return;
+  const{lstm,cnn,transformer,gnn}=m;
+  if(lstm){const bad=lstm.status==='ANOMALY'?'bc':lstm.status==='WARNING'?'bw':'bn';document.getElementById('mb_lstm').textContent=lstm.status||'—';document.getElementById('mb_lstm').className='mobadge '+bad;document.getElementById('mv_lstm').textContent=`score:${(lstm.score||0).toFixed(4)} z:${(lstm.z_score||0).toFixed(3)} mean:${(lstm.mean_temp||0).toFixed(2)} xT:${(lstm.xTemp||0).toFixed(3)}`;if(lstm.status==='ANOMALY')flashCard('mc_lstm');}
+  if(cnn){const bad=cnn.severity==='critical'?'bc':cnn.severity==='warning'?'bw':'bn';document.getElementById('mb_cnn').textContent=cnn.pattern||'—';document.getElementById('mb_cnn').className='mobadge '+bad;document.getElementById('mv_cnn').textContent=`RMS:${(cnn.rms_accel||0).toFixed(4)} fX:${(cnn.fine_x||0).toFixed(3)} fY:${(cnn.fine_y||0).toFixed(3)} fZ:${(cnn.fine_z||0).toFixed(3)}`;if(cnn.severity!=='nominal')flashCard('mc_cnn');}
+  if(transformer){const trend=transformer.trend||'STABLE';document.getElementById('mb_trans').textContent=trend;document.getElementById('mb_trans').className='mobadge '+(trend!=='STABLE'?'bw':'bn');document.getElementById('mv_trans').textContent=`pred:${(transformer.pred_xTemp||0).toFixed(3)} slope:${(transformer.slope||0).toFixed(5)} cur:${(transformer.current_xTemp||0).toFixed(3)}`;}
+  if(gnn){const bad=gnn.cross_anomaly?'bc':(gnn.issues||[]).length>0?'bw':'bp';document.getElementById('mb_gnn').textContent=gnn.cross_anomaly?'CROSS-ANOMALY':(gnn.issues||[]).length>0?'ISSUES':'NOMINAL';document.getElementById('mb_gnn').className='mobadge '+bad;const sc2=gnn.subsystem_scores||{};document.getElementById('mv_gnn').textContent=`crms:${(gnn.coarse_rms||0).toFixed(4)} issues:[${(gnn.issues||[]).join(',')||'none'}] th:${(sc2.thermal||1).toFixed(2)} st:${(sc2.structural||1).toFixed(2)}`;if(gnn.cross_anomaly)flashCard('mc_gnn');}
 }
 
-// ══════════════════════════════════════════════════
-//  ANOMALY EVENT FEED
-// ══════════════════════════════════════════════════
-let pktCount=0,anomCount=0,critCount=0,warnCount=0,prevScore=0;
-function addAnomalyEvent(score){
-  const ts=new Date().toTimeString().slice(0,8);
-  let sevCls,msg,sys;
-  if(score>0.2&&prevScore<=0.2){
-    sevCls='c'; msg='Score > 0.20 — CRITICAL threshold breached'; sys='LSTM';
-    critCount++; document.getElementById('critCount').textContent=critCount;
-    anomCount++;  document.getElementById('anomCount').textContent=anomCount;
-  } else if(score>0.05&&prevScore<=0.05){
-    sevCls='w'; msg='Score > 0.05 — WARNING threshold breached'; sys='LSTM';
-    warnCount++; document.getElementById('warnCount').textContent=warnCount;
-    anomCount++;  document.getElementById('anomCount').textContent=anomCount;
-  } else if(score<=0.05&&prevScore>0.05){
-    sevCls='n'; msg='Score returned to NOMINAL range (≤0.05)'; sys='LSTM';
-    anomCount++;  document.getElementById('anomCount').textContent=anomCount;
-  } else { prevScore=score; return; }
-  const feed=document.getElementById('anomFeed');
-  const row=document.createElement('div'); row.className='anom-row';
-  row.innerHTML=`<div class="sev ${sevCls}"></div><span class="a-time">${ts}</span><span class="a-msg">${msg}</span><span class="a-sys">${sys}</span>`;
-  feed.insertBefore(row,feed.firstChild);
-  if(feed.children.length>35)feed.removeChild(feed.lastChild);
-  prevScore=score;
-}
-function heartbeat(score){
-  pktCount++; document.getElementById('pktCount').textContent=pktCount;
-  document.getElementById('lastPkt').textContent=new Date().toLocaleTimeString();
-  if(pktCount%25===0){
-    const feed=document.getElementById('anomFeed');
-    const row=document.createElement('div'); row.className='anom-row';
-    row.innerHTML=`<div class="sev n"></div><span class="a-time">${new Date().toTimeString().slice(0,8)}</span><span class="a-msg">Heartbeat · ${pktCount} pkts · score ${score.toFixed(4)}</span><span class="a-sys">TELEMETRY</span>`;
-    feed.insertBefore(row,feed.firstChild);
-    if(feed.children.length>35)feed.removeChild(feed.lastChild);
-  }
-}
+// ═══ SENSOR TABLE ═══
+function updateTable(s){let h='';for(const k in s){const v=s[k];h+=`<tr><td>${k}</td><td>${typeof v==='number'?v.toFixed(6):v}</td></tr>`;}document.getElementById('stbody').innerHTML=h;}
 
-// ══════════════════════════════════════════════════
-//  ★ WEBSOCKET — ws://127.0.0.1:9000/telemetry ★
-//  Receives exactly: { "sensors": {...}, "anomaly_score": float }
-//  as sent by: await websocket.send_json(current_state)
-// ══════════════════════════════════════════════════
-function connectWS(){
+// ═══ ANOMALY FEED ═══
+let pkt=0,evts=0,crits=0,warns=0,prevScore=0,prevCNN='NORMAL',prevGNN=false;
+function addEvent(sev,msg,sys){const ts=new Date().toTimeString().slice(0,8);const feed=document.getElementById('afeed');const row=document.createElement('div');row.className='ar';row.innerHTML=`<div class="sd ${sev}"></div><span class="at2">${ts}</span><span class="am">${msg}</span><span class="as2">${sys}</span>`;feed.insertBefore(row,feed.firstChild);if(feed.children.length>40)feed.removeChild(feed.lastChild);evts++;document.getElementById('evts').textContent=evts;}
+function checkAnomalies(data){const score=data.anomaly_score||0,m=data.models||{},cnn=m.cnn||{},gnn=m.gnn||{};if(score>.2&&prevScore<=.2){crits++;document.getElementById('crits').textContent=crits;addEvent('c',`LSTM score ${score.toFixed(4)} > CRITICAL 0.20`,'LSTM');}else if(score>.05&&prevScore<=.05){warns++;document.getElementById('warns').textContent=warns;addEvent('w',`LSTM score ${score.toFixed(4)} > WARNING 0.05`,'LSTM');}else if(score<=.05&&prevScore>.05){addEvent('n','Score returned to NOMINAL','LSTM');}const cp=cnn.pattern||'NORMAL';if(cp!=='NORMAL'&&prevCNN==='NORMAL'){addEvent(cp==='STRONG_VIBRATION'?'c':'w',`CNN: ${cp} RMS:${(cnn.rms_accel||0).toFixed(4)}`,'CNN');}else if(cp==='NORMAL'&&prevCNN!=='NORMAL'){addEvent('n','CNN: vibration resolved','CNN');}if(gnn.cross_anomaly&&!prevGNN){addEvent('c','GNN: cross-anomaly — thermal + mechanical','GNN');}prevScore=score;prevCNN=cp;prevGNN=!!gnn.cross_anomaly;}
+function heartbeat(data){pkt++;document.getElementById('pkt').textContent=pkt;document.getElementById('fpkt').textContent=pkt;document.getElementById('flast').textContent=new Date().toLocaleTimeString();document.getElementById('rptPktCount').textContent=pkt;if(data.file_info)document.getElementById('finfo').textContent=(data.file_info.split('\\').pop()||data.file_info.split('/').pop());if(pkt%30===0)addEvent('n',`Heartbeat · ${pkt} pkts · score ${(data.anomaly_score||0).toFixed(4)}`,'TELEMETRY');}
+
+// ═══ WEBSOCKET ═══
+function connect(){
   const ws=new WebSocket('ws://127.0.0.1:9000/telemetry');
-
-  ws.onopen=()=>{
-    document.getElementById('wsDot').className='ws-dot live';
-    document.getElementById('wsLabel').textContent='LIVE · CONNECTED';
-    document.getElementById('wsLabel').style.color='var(--green)';
-    console.log('[WS] Connected to ws://127.0.0.1:9000/telemetry');
-  };
-
-  ws.onclose=()=>{
-    document.getElementById('wsDot').className='ws-dot';
-    document.getElementById('wsLabel').textContent='DISCONNECTED · RETRYING…';
-    document.getElementById('wsLabel').style.color='var(--red)';
-    setTimeout(connectWS,3000); // auto-reconnect every 3s
-  };
-
-  ws.onerror=e=>console.error('[WS] Error:',e);
-
-  ws.onmessage=event=>{
-    let data;
-    try{ data=JSON.parse(event.data); }
-    catch(e){ console.error('[WS] Parse error:',e); return; }
-
-    const s=data.sensors||{};
-    const score=Number(data.anomaly_score)||0;
-
-    // ── Push to charts (exact field names from your CSV/dashboard_server.py) ──
-    push(tempChart,0,s.xTemp);
-    push(tempChart,1,s.yTemp);
-    push(tempChart,2,s.zTemp);
-    tempChart.update('none');
-
-    push(accChart,0,s['X Fine Acceleration']);
-    push(accChart,1,s['Y Fine Acceleration']);
-    push(accChart,2,s['Z Fine Acceleration']);
-    push(accChart,3,s['X Coarse Acceleration']);
-    push(accChart,4,s['Y Coarse Acceleration']);
-    push(accChart,5,s['Z Coarse Acceleration']);
-    accChart.update('none');
-
-    push(scoreChart,0,score);
-    scoreChart.update('none');
-
-    // ── Update all panels ──
-    updateCards(data);
-    updateSensorTable(s);
-    updateSubsystems(score);
-    updateRing(score);
-    updateModelOutputs(s,score);
-    addAnomalyEvent(score);
-    heartbeat(score);
+  ws.onopen=()=>{document.getElementById('wsd').className='wsd live';document.getElementById('wsl').textContent='LIVE · CONNECTED';document.getElementById('wsl').style.color='var(--green)';};
+  ws.onclose=()=>{document.getElementById('wsd').className='wsd';document.getElementById('wsl').textContent='DISCONNECTED · RETRY 3s';document.getElementById('wsl').style.color='var(--red)';setTimeout(connect,3000);};
+  ws.onerror=e=>console.error('[WS]',e);
+  ws.onmessage=ev=>{
+    let data;try{data=JSON.parse(ev.data);}catch(e){return;}
+    const s=data.sensors||{},score=Number(data.anomaly_score)||0,m=data.models||{};
+    push(tc,0,s.xTemp);push(tc,1,s.yTemp);push(tc,2,s.zTemp);push(tc,3,m.transformer?.pred_xTemp);tc.update('none');
+    push(ac,0,s['X Fine Acceleration']);push(ac,1,s['Y Fine Acceleration']);push(ac,2,s['Z Fine Acceleration']);
+    push(ac,3,s['X Coarse Acceleration']);push(ac,4,s['Y Coarse Acceleration']);push(ac,5,s['Z Coarse Acceleration']);ac.update('none');
+    push(sc,0,score);sc.update('none');
+    updateCards(data);updateTable(s);updateSubs(m.gnn,score);updateRing(score);updateModelCards(m);checkAnomalies(data);heartbeat(data);
   };
 }
+connect();
 
-connectWS();
-
-// ══════════════════════════════════════════════════
-//  ★ AI QUERY — GET /ask?question=... ★
-//  Returns: { "response": "..." } from Ollama llama3
-//  Model routing happens in ai_system.py:select_model()
-// ══════════════════════════════════════════════════
-function highlightModel(question){
-  // Mirror select_model() logic from ai_system.py
-  const q=question.toLowerCase();
-  document.getElementById('chip_lstm').className='model-chip lstm';
-  document.getElementById('chip_cnn').className='model-chip cnn';
-  document.getElementById('chip_trans').className='model-chip trans';
-  document.getElementById('chip_gnn').className='model-chip gnn';
-  if(q.includes('pattern'))      document.getElementById('chip_cnn').className='model-chip cnn active';
-  else if(q.includes('predict')) document.getElementById('chip_trans').className='model-chip trans active';
-  else if(q.includes('cause'))   document.getElementById('chip_gnn').className='model-chip gnn active';
-  else                           document.getElementById('chip_lstm').className='model-chip lstm active'; // default = LSTM
-}
-
-function askAI(question){
-  const out=document.getElementById('aiOut');
-  const btn=document.getElementById('aiBtn');
-  document.getElementById('aiIn').value=question;
-  highlightModel(question);
-
-  const q=question.toLowerCase();
-  const modelName=q.includes('pattern')?'CNN':q.includes('predict')?'TRANSFORMER':q.includes('cause')?'GNN':'LSTM';
-
-  out.innerHTML=`<span style="color:var(--cyan-dim);">&gt; ${question}</span><br><span style="color:var(--text-label);">// Routing to ${modelName} → Ollama llama3…</span>`;
-  out.classList.add('ai-typing');
-  btn.disabled=true;
-
+// ═══ AI QUERY (/ask) ═══
+function hlTab(q){['lstm','cnn','trans','gnn'].forEach(id=>document.getElementById('tab_'+id).className='mtab');if(q.includes('pattern')||q.includes('vibration'))document.getElementById('tab_cnn').className='mtab ac';else if(q.includes('predict')||q.includes('forecast'))document.getElementById('tab_trans').className='mtab at';else if(q.includes('cause')||q.includes('graph')||q.includes('subsystem'))document.getElementById('tab_gnn').className='mtab ag';else document.getElementById('tab_lstm').className='mtab al';}
+function ask(question){
+  const out=document.getElementById('aiout'),btn=document.getElementById('aibtn');
+  document.getElementById('aiinput').value=question;const ql=question.toLowerCase();hlTab(ql);
+  const mn=ql.includes('pattern')||ql.includes('vibration')?'CNN':ql.includes('predict')||ql.includes('forecast')?'TRANSFORMER':ql.includes('cause')||ql.includes('graph')?'GNN':'LSTM';
+  out.innerHTML=`<span style="color:var(--cdim)">&gt; ${question}</span><br><span style="color:var(--tl)">// Routing → ${mn} → llama3…</span>`;
+  out.classList.add('typing');btn.disabled=true;
   fetch(`/ask?question=${encodeURIComponent(question)}`)
     .then(r=>r.json())
-    .then(d=>{
-      out.classList.remove('ai-typing');
-      btn.disabled=false;
-      // Your /ask endpoint returns {"response": "..."}
-      const resp=d.response||d.answer||d.result||JSON.stringify(d);
-      out.innerHTML=
-        `<span style="color:var(--cyan-dim);">&gt; ${question}</span>`+
-        `<br><span style="color:var(--text-label);">// Model: ${modelName} · Ollama llama3</span><br><br>`+
-        `<span style="color:var(--text-primary);">${resp}</span>`;
-      document.getElementById('aiIn').value='';
+    .then(d=>{out.classList.remove('typing');btn.disabled=false;const resp=d.response||JSON.stringify(d);const mout=d.model_output?`<br><span style="color:var(--tl)">model: ${JSON.stringify(d.model_output)}</span>`:'';out.innerHTML=`<span style="color:var(--cdim)">&gt; ${question}</span><br><span style="color:var(--tl)">// ${d.model_used||mn} · score:${(d.anomaly_score||0).toFixed(4)} · ${d.status||''}</span>${mout}<br><br><span style="color:var(--tp)">${resp}</span>`;document.getElementById('aiinput').value='';})
+    .catch(e=>{out.classList.remove('typing');btn.disabled=false;out.innerHTML=`<span style="color:var(--red)">// /ask error: ${e.message}</span>`;});
+}
+document.getElementById('aibtn').onclick=()=>{const q=document.getElementById('aiinput').value.trim();if(q)ask(q);};
+document.getElementById('aiinput').addEventListener('keydown',e=>{if(e.key==='Enter'){const q=e.target.value.trim();if(q)ask(q);}});
+
+// ═══════════════════════════════════════════════════════
+// ★ REPORT GENERATOR — calls /report/html or /report/pdf
+// ═══════════════════════════════════════════════════════
+function generateReport(format) {
+  const spinner = document.getElementById('reportSpinner');
+  const spinMsg = document.getElementById('reportSpinMsg');
+  const btnHtml = document.getElementById('btnHtml');
+  const btnPdf  = document.getElementById('btnPdf');
+
+  spinner.style.display = 'flex';
+  spinMsg.textContent = format === 'pdf'
+    ? 'Generating PDF — rendering charts + AI narrative… (30-60s)'
+    : 'Generating HTML report — rendering charts + AI narrative…';
+  btnHtml.style.opacity = '0.5';
+  btnPdf.style.opacity  = '0.5';
+
+  const endpoint = format === 'pdf' ? '/report/pdf' : '/report/html';
+
+  fetch(endpoint)
+    .then(res => {
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      return res.blob();
     })
-    .catch(err=>{
-      out.classList.remove('ai-typing');
-      btn.disabled=false;
-      out.innerHTML=
-        `<span style="color:var(--cyan-dim);">&gt; ${question}</span><br><br>`+
-        `<span style="color:var(--red);">// /ask endpoint error: ${err.message}`+
-        `<br>// Is dashboard_server.py running on port 9000?</span>`;
+    .then(blob => {
+      spinner.style.display = 'none';
+      btnHtml.style.opacity = '1';
+      btnPdf.style.opacity  = '1';
+
+      // Trigger download
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0,19);
+      a.href = url;
+      a.download = `mission_report_${ts}.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      // If HTML, also open in new tab
+      if (format === 'html') {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const tab = window.open('', '_blank');
+          tab.document.write(reader.result);
+          tab.document.close();
+        };
+        reader.readAsText(blob);
+      }
+
+      addEvent('n', `Report generated: ${format.toUpperCase()} · ${pkt} packets`, 'REPORT');
+    })
+    .catch(err => {
+      spinner.style.display = 'none';
+      btnHtml.style.opacity = '1';
+      btnPdf.style.opacity  = '1';
+      addEvent('c', `Report failed: ${err.message}`, 'REPORT');
+      alert(`Report generation failed: ${err.message}\nIs mission_engine.py running?`);
     });
 }
 
-document.getElementById('aiBtn').onclick=()=>{
-  const q=document.getElementById('aiIn').value.trim();
-  if(q)askAI(q);
-};
-document.getElementById('aiIn').addEventListener('keydown',e=>{
-  if(e.key==='Enter'){const q=e.target.value.trim();if(q)askAI(q);}
-});
+// ═══════════════════════════════════════════════════════
+// ★ IMAGE ANALYSIS — POST /analyze-image
+// ═══════════════════════════════════════════════════════
+let selectedImageType = 'sensor_chart';
+let selectedFile = null;
+
+function selectImgType(el) {
+  document.querySelectorAll('.itype').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedImageType = el.dataset.type;
+}
+
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) setFile(file);
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropzone').classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) setFile(file);
+}
+
+function setFile(file) {
+  selectedFile = file;
+  const dz = document.getElementById('dropzone');
+  const preview = document.getElementById('dzPreview');
+  const fname = document.getElementById('dzFilename');
+  const btn = document.getElementById('analyzeBtn');
+
+  dz.classList.add('has-file');
+  fname.textContent = `📎 ${file.name}  (${(file.size/1024).toFixed(1)} KB)`;
+  fname.style.display = 'block';
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+
+  btn.disabled = false;
+
+  document.getElementById('imgOut').innerHTML =
+    `<span style="color:var(--green)">// Image loaded: ${file.name}</span><br>` +
+    `<span style="color:var(--tl)">// Type: ${selectedImageType} · Size: ${(file.size/1024).toFixed(1)} KB</span><br>` +
+    `<span style="color:var(--tl)">// Click "ANALYZE IMAGE WITH AI" to send to llava vision model</span>`;
+}
+
+function analyzeImage() {
+  if (!selectedFile) return;
+  const out  = document.getElementById('imgOut');
+  const btn  = document.getElementById('analyzeBtn');
+
+  out.innerHTML =
+    `<span style="color:var(--cdim)">// Sending ${selectedFile.name} to Ollama llava…</span><br>` +
+    `<span style="color:var(--tl)">// Image type: ${selectedImageType}</span><br>` +
+    `<span style="color:var(--tl)">// Correlating with live mission telemetry…</span>`;
+  out.classList.add('typing');
+  btn.disabled = true;
+
+  const formData = new FormData();
+  formData.append('file', selectedFile);
+  formData.append('image_type', selectedImageType);
+
+  fetch(`/analyze-image?image_type=${encodeURIComponent(selectedImageType)}`, {
+    method: 'POST',
+    body: formData,
+  })
+  .then(r => r.json())
+  .then(d => {
+    out.classList.remove('typing');
+    btn.disabled = false;
+
+    const ctx = d.mission_context || {};
+    const analysis = d.analysis || 'No analysis returned.';
+
+    // Parse structured sections from the analysis
+    let html =
+      `<span style="color:var(--cdim)">// Image: ${d.filename || selectedFile.name}</span><br>` +
+      `<span style="color:var(--tl)">// Model: ${d.model_used || 'llava'} · Type: ${d.image_type}</span><br>` +
+      `<span style="color:var(--tl)">// Context — score:${(ctx.anomaly_score||0).toFixed(4)} · ${ctx.status||'—'} · CNN:${ctx.cnn_pattern||'—'}</span><br><br>`;
+
+    // Color-code known section headers
+    const lines = analysis.split('\n');
+    lines.forEach(line => {
+      const l = line.trim();
+      if (!l) { html += '<br>'; return; }
+      if (l.match(/^1\.|DESCRIPTION/i))   html += `<span style="color:var(--cyan);font-weight:bold">${l}</span><br>`;
+      else if (l.match(/^2\.|ANOMAL/i))   html += `<span style="color:var(--amber);font-weight:bold">${l}</span><br>`;
+      else if (l.match(/^3\.|CORREL/i))   html += `<span style="color:var(--green);font-weight:bold">${l}</span><br>`;
+      else if (l.match(/^4\.|RECOMM/i))   html += `<span style="color:var(--red);font-weight:bold">${l}</span><br>`;
+      else                                html += `<span style="color:var(--tp)">${l}</span><br>`;
+    });
+
+    out.innerHTML = html;
+    addEvent('n', `Image analyzed: ${d.filename || selectedFile.name} · ${d.image_type}`, 'VISION AI');
+  })
+  .catch(err => {
+    out.classList.remove('typing');
+    btn.disabled = false;
+    out.innerHTML =
+      `<span style="color:var(--red)">// /analyze-image error: ${err.message}</span><br>` +
+      `<span style="color:var(--tl)">// Is mission_engine.py running?</span><br>` +
+      `<span style="color:var(--tl)">// For vision: ollama pull llava</span>`;
+  });
+}
 </script>
 </body>
 </html>
