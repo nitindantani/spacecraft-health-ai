@@ -1,0 +1,2845 @@
+
+
+===== models/lstm\evaluate.py =====
+import torch
+import numpy as np
+from tqdm import tqdm
+
+from core.build_loader import get_loader
+from models.lstm.model import LSTMAutoencoder
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+# ---------- LOAD DATA ----------
+loader = get_loader(batch_size=64, shuffle=False)
+
+# ---------- LOAD MODEL ----------
+model = LSTMAutoencoder().to(DEVICE)
+model.load_state_dict(torch.load("outputs/weights/best_lstm.pt", map_location=DEVICE))
+model.eval()
+
+print("Evaluating model...\n")
+
+all_window_errors = []
+all_sensor_errors = []
+
+with torch.no_grad():
+    for x, _ in tqdm(loader):
+
+        x = x.to(DEVICE)
+
+        pred = model(x)
+
+        # 🔹 Window-level error (single value per window)
+        window_error = torch.mean((pred - x) ** 2, dim=(1, 2))
+        all_window_errors.append(window_error.cpu())
+
+        # 🔹 Per-sensor error (this is what GNN needs)
+        sensor_error = torch.mean((pred - x) ** 2, dim=1)
+        all_sensor_errors.append(sensor_error.cpu())
+
+# concatenate everything
+all_window_errors = torch.cat(all_window_errors).numpy()
+all_sensor_errors = torch.cat(all_sensor_errors).numpy()
+
+print("\nEvaluation complete.")
+print("Mean window error:", all_window_errors.mean())
+print("Std window error:", all_window_errors.std())
+
+# Save properly structured outputs
+np.save("outputs/metrics/errors_lstm.npy", all_window_errors)
+np.save("outputs/metrics/sensor_errors_lstm.npy", all_sensor_errors)
+
+print("\nSaved:")
+print("→ outputs/metrics/errors_lstm.npy")
+print("→ outputs/metrics/sensor_errors_lstm.npy")
+
+
+===== models/lstm\model.py =====
+import torch
+import torch.nn as nn
+
+
+class LSTMAutoencoder(nn.Module):
+    def __init__(self, input_dim=9, hidden_dim=64, num_layers=1):
+        super().__init__()
+
+        # Encoder
+        self.encoder = nn.LSTM(
+            input_dim,
+            hidden_dim,
+            num_layers,
+            batch_first=True
+        )
+
+        # Decoder
+        self.decoder = nn.LSTM(
+            hidden_dim,
+            hidden_dim,
+            num_layers,
+            batch_first=True
+        )
+
+        # Output layer
+        self.output_layer = nn.Linear(hidden_dim, input_dim)
+
+    def forward(self, x):
+
+        # Encode
+        _, (hidden, cell) = self.encoder(x)
+
+        # Repeat hidden state for each timestep
+        seq_len = x.size(1)
+        decoder_input = hidden[-1].unsqueeze(1).repeat(1, seq_len, 1)
+
+        # Decode
+        decoded, _ = self.decoder(decoder_input)
+
+        # Map to sensor space
+        output = self.output_layer(decoded)
+
+        return output
+
+
+===== models/lstm\train.py =====
+import torch
+import torch.nn as nn
+from torch.optim import Adam
+from tqdm import tqdm
+
+from core.build_loader import get_loader
+from models.lstm.model import LSTMAutoencoder
+
+
+
+# ---------- CONFIG ----------
+BATCH_SIZE = 64
+EPOCHS = 5
+LR = 1e-3
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+# ---------- DATA ----------
+loader = get_loader(batch_size=BATCH_SIZE)
+
+
+# ---------- MODEL ----------
+model = LSTMAutoencoder().to(DEVICE)
+criterion = nn.MSELoss()
+optimizer = Adam(model.parameters(), lr=LR)
+
+
+best_loss = float("inf")
+
+print("Training on:", DEVICE)
+print("Starting training...\n")
+
+
+# ---------- TRAIN LOOP ----------
+for epoch in range(EPOCHS):
+
+    model.train()
+    total_loss = 0
+
+    progress = tqdm(loader, desc=f"Epoch {epoch+1}/{EPOCHS}")
+
+    for x, y in progress:
+
+        x = x.to(DEVICE)
+        y = y.to(DEVICE)
+
+        optimizer.zero_grad()
+
+        # forward
+        output = model(x)
+
+        # loss
+        loss = criterion(output, x)  # Autoencoder: compare output to input
+
+        # backward
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item()
+        progress.set_postfix(loss=loss.item())
+
+    avg_loss = total_loss / len(loader)
+
+    print(f"\nEpoch {epoch+1} loss: {avg_loss:.6f}")
+
+    if avg_loss < best_loss:
+        best_loss = avg_loss
+        torch.save(model.state_dict(), "outputs/weights/best_lstm.pt")
+        print("✔ Best model saved\n")
+
+
+
+===== models/cnn\evaluate.py =====
+import torch
+import numpy as np
+from tqdm import tqdm
+
+from core.build_loader import get_loader
+from models.cnn.model import CNNAutoencoder
+
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+print("Loading data...")
+loader = get_loader(batch_size=64, shuffle=False)
+
+print("Loading model...")
+model = CNNAutoencoder().to(DEVICE)
+model.load_state_dict(torch.load("outputs/weights/best_cnn.pt"))
+model.eval()
+
+errors = []
+
+print("Evaluating CNN...")
+
+with torch.no_grad():
+    for x, _ in tqdm(loader):
+        x = x.to(DEVICE)
+
+        out = model(x)
+
+        # reconstruction error per window
+        err = torch.mean((x - out) ** 2, dim=(1,2))
+        errors.extend(err.cpu().numpy())
+
+errors = np.array(errors)
+
+print("\nEvaluation complete.")
+print("Mean error:", errors.mean())
+print("Std error:", errors.std())
+print("Max error:", errors.max())
+
+np.save("outputs/metrics/errors_cnn.npy", errors)
+print("Saved -> outputs/metrics/errors_cnn.npy")
+
+
+
+===== models/cnn\model.py =====
+import torch
+import torch.nn as nn
+
+
+class CNNAutoencoder(nn.Module):
+    def __init__(self, n_features=9):
+        super().__init__()
+
+        # Encoder
+        self.encoder = nn.Sequential(
+            nn.Conv1d(n_features, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(64, 32, kernel_size=3, padding=1),
+            nn.ReLU()
+        )
+
+        # Decoder
+        self.decoder = nn.Sequential(
+            nn.Conv1d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(64, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(32, n_features, kernel_size=3, padding=1)
+        )
+
+    def forward(self, x):
+        # x shape: (batch, window, features)
+        x = x.permute(0, 2, 1)     # → (batch, features, window)
+
+        z = self.encoder(x)
+        out = self.decoder(z)
+
+        out = out.permute(0, 2, 1) # → back to (batch, window, features)
+        return out
+
+
+
+===== models/cnn\train.py =====
+import torch
+import torch.nn as nn
+from torch.optim import Adam
+from tqdm import tqdm
+
+from core.build_loader import get_loader
+from models.cnn.model import CNNAutoencoder
+
+
+# ---------- CONFIG ----------
+BATCH_SIZE = 64
+EPOCHS = 5
+LR = 1e-3
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+# ---------- DATA ----------
+loader = get_loader(batch_size=BATCH_SIZE)
+
+
+# ---------- MODEL ----------
+model = CNNAutoencoder().to(DEVICE)
+criterion = nn.MSELoss()
+optimizer = Adam(model.parameters(), lr=LR)
+
+best_loss = float("inf")
+
+print("Training CNN on:", DEVICE)
+print("Starting training...\n")
+
+
+# ---------- TRAIN LOOP ----------
+for epoch in range(EPOCHS):
+
+    model.train()
+    total_loss = 0
+
+    progress = tqdm(loader, desc=f"Epoch {epoch+1}/{EPOCHS}")
+
+    for x, _ in progress:
+
+        x = x.to(DEVICE)
+
+        optimizer.zero_grad()
+
+        # reconstruction
+        output = model(x)
+
+        loss = criterion(output, x)
+
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item()
+        progress.set_postfix(loss=loss.item())
+
+    avg_loss = total_loss / len(loader)
+
+    print(f"\nEpoch {epoch+1} loss: {avg_loss:.6f}")
+
+    # ---------- SAVE BEST ----------
+    if avg_loss < best_loss:
+        best_loss = avg_loss
+        torch.save(model.state_dict(), "outputs/weights/best_cnn.pt")
+        print("✔ Best CNN model saved\n")
+
+print("CNN training complete.")
+
+
+
+===== models/transformer\evaluate.py =====
+import torch
+import numpy as np
+from tqdm import tqdm
+
+from core.build_loader import get_loader
+from models.transformer.model import TransformerAutoencoder
+
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+print("Loading data...")
+loader = get_loader(batch_size=64, shuffle=False)
+
+print("Loading model...")
+model = TransformerAutoencoder().to(DEVICE)
+model.load_state_dict(torch.load("outputs/weights/best_transformer.pt"))
+model.eval()
+
+errors = []
+
+print("Evaluating Transformer...")
+
+with torch.no_grad():
+    for x, _ in tqdm(loader):
+        x = x.to(DEVICE)
+
+        out = model(x)
+
+        # reconstruction error per window
+        err = ((x - out) ** 2).mean(dim=(1,2))
+        errors.extend(err.cpu().numpy())
+
+errors = np.array(errors)
+
+print("\nEvaluation complete.")
+print("Mean error:", errors.mean())
+print("Std error:", errors.std())
+print("Max error:", errors.max())
+
+np.save("outputs/metrics/errors_transformer.npy", errors)
+print("Saved -> outputs/metrics/errors_transformer.npy")
+
+
+
+===== models/transformer\model.py =====
+import torch
+import torch.nn as nn
+
+
+class TransformerAutoencoder(nn.Module):
+    def __init__(self, n_features=9, d_model=64, nhead=4, num_layers=2):
+        super().__init__()
+
+        self.input_proj = nn.Linear(n_features, d_model)
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            batch_first=True
+        )
+
+        self.encoder = nn.TransformerEncoder(
+            encoder_layer,
+            num_layers=num_layers
+        )
+
+        self.output_proj = nn.Linear(d_model, n_features)
+
+    def forward(self, x):
+        # x: (batch, window, features)
+        x = self.input_proj(x)
+        x = self.encoder(x)
+        x = self.output_proj(x)
+        return x
+
+
+
+===== models/transformer\train.py =====
+import torch
+import torch.nn as nn
+from torch.optim import Adam
+from tqdm import tqdm
+
+from core.build_loader import get_loader
+from models.transformer.model import TransformerAutoencoder
+
+
+BATCH_SIZE = 64
+EPOCHS = 5
+LR = 1e-3
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+loader = get_loader(batch_size=BATCH_SIZE)
+
+model = TransformerAutoencoder().to(DEVICE)
+criterion = nn.MSELoss()
+optimizer = Adam(model.parameters(), lr=LR)
+
+best_loss = float("inf")
+
+print("Training Transformer on:", DEVICE)
+
+for epoch in range(EPOCHS):
+
+    model.train()
+    total_loss = 0
+
+    progress = tqdm(loader, desc=f"Epoch {epoch+1}/{EPOCHS}")
+
+    for x, _ in progress:
+
+        x = x.to(DEVICE)
+
+        optimizer.zero_grad()
+
+        out = model(x)
+        loss = criterion(out, x)
+
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item()
+        progress.set_postfix(loss=loss.item())
+
+    avg_loss = total_loss / len(loader)
+
+    print(f"\nEpoch {epoch+1} loss: {avg_loss:.6f}")
+
+    if avg_loss < best_loss:
+        best_loss = avg_loss
+        torch.save(model.state_dict(), "outputs/weights/best_transformer.pt")
+        print("✔ Transformer saved\n")
+
+print("Training complete.")
+
+
+
+===== models/gnn\model.py =====
+import torch
+import torch.nn as nn
+from torch_geometric.nn import GCNConv
+
+
+class SpacecraftGNN(nn.Module):
+    def __init__(self, num_nodes=9, hidden=16):
+        super().__init__()
+
+        self.conv1 = GCNConv(1, hidden)
+        self.conv2 = GCNConv(hidden, hidden)
+
+        self.fc = nn.Linear(hidden, 1)
+
+    def forward(self, x, edge_index):
+        # x shape: [num_nodes, 1]
+        x = self.conv1(x, edge_index)
+        x = torch.relu(x)
+
+        x = self.conv2(x, edge_index)
+        x = torch.relu(x)
+
+        x = self.fc(x)
+
+        # squash output to safe range
+        x = torch.tanh(x)
+
+        return x
+
+
+===== models/gnn\train.py =====
+import torch
+from tqdm import tqdm
+
+from core.sensor_graph import edge_index
+from models.gnn.model import SpacecraftGNN
+
+
+print("Loading graph features...")
+features = torch.load("outputs/metrics/graph_features.pt")
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+model = SpacecraftGNN().to(DEVICE)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+print("Training GNN...")
+
+model.train()
+
+for epoch in range(5):
+
+    total_loss = 0
+
+    for f in tqdm(features):
+
+        # reshape for node input
+        x = f.unsqueeze(-1).to(DEVICE)      # [nodes, 1]
+        ei = edge_index.to(DEVICE)
+
+        optimizer.zero_grad()
+
+        out = model(x, ei)
+
+        # dummy self-reconstruction target
+        loss = ((out.squeeze() - x.squeeze())**2).mean()
+
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item()
+
+    print(f"Epoch {epoch+1} loss: {total_loss/len(features):.6f}")
+
+torch.save(model.state_dict(), "outputs/weights/best_gnn.pt")
+print("Saved -> outputs/weights/best_gnn.pt")
+
+
+
+===== pipeline\build_incidents.py =====
+import numpy as np
+import pandas as pd
+
+print("Loading anomalies...")
+anoms = np.load("outputs/metrics/anomaly_indices.npy")
+
+print("Loading timestamps...")
+df = pd.read_csv("data/normalized/20230824.csv")
+time_col = df.columns[0]
+
+times = pd.to_datetime(df[time_col], format="mixed", utc=True)
+
+
+# convert anomaly windows to timestamps
+anomaly_times = [times.iloc[a] for a in anoms if a < len(times)]
+
+# -----------------------------
+# GROUP INTO INCIDENTS
+# -----------------------------
+INCIDENT_GAP = pd.Timedelta(seconds=2)
+
+incidents = []
+current = [anomaly_times[0]]
+
+for t in anomaly_times[1:]:
+    if t - current[-1] <= INCIDENT_GAP:
+        current.append(t)
+    else:
+        incidents.append(current)
+        current = [t]
+
+incidents.append(current)
+
+# -----------------------------
+# PRINT INCIDENT SUMMARY
+# -----------------------------
+print("\nDetected incidents:\n")
+
+for i, inc in enumerate(incidents, 1):
+    start = inc[0]
+    end = inc[-1]
+    duration = (end - start).total_seconds()
+
+    print(f"Incident {i}")
+    print(f"Start: {start}")
+    print(f"End:   {end}")
+    print(f"Duration: {duration:.3f} sec")
+    print(f"Windows: {len(inc)}\n")
+
+
+
+===== pipeline\classify_incidents.py =====
+import numpy as np
+
+# load anomalies + explanations
+anoms = np.load("outputs/metrics/anomaly_indices.npy")
+
+print("\nClassifying incidents...\n")
+
+def classify(features):
+    # very simple rules (we upgrade later)
+    if any("Temp" in f for f in features):
+        return "Thermal anomaly"
+    if any("Accel" in f for f in features):
+        return "Vibration anomaly"
+    return "Unknown anomaly"
+
+# Example fake mapping for now
+# (later we connect with your real feature explanations)
+for i, idx in enumerate(anoms[:10]):
+
+    # pretend features detected (we replace later)
+    if i % 3 == 0:
+        feats = ["Temp X", "Temp Y"]
+    elif i % 3 == 1:
+        feats = ["Accel coarse Y", "Accel fine Y"]
+    else:
+        feats = ["Temp Z", "Accel coarse Z"]
+
+    label = classify(feats)
+
+    print(f"Incident around window {idx}:")
+    print("  Type:", label)
+    print("  Sensors:", ", ".join(feats))
+    print()
+
+
+
+===== pipeline\classify_subsystem.py =====
+import numpy as np
+import pandas as pd
+
+print("Loading incidents from CSV...")
+df = pd.read_csv("outputs/metrics/incidents_scored.csv")
+
+# each row already represents an incident
+incidents = df.index.values
+
+print("Loading sensor explanations...")
+
+# -------- SENSOR GROUPS --------
+THERMAL = ["Temp X", "Temp Y", "Temp Z"]
+STRUCTURAL = [
+    "Accel coarse X", "Accel coarse Y", "Accel coarse Z",
+    "Accel fine X", "Accel fine Y", "Accel fine Z"
+]
+
+# adjust if your order differs
+SENSOR_NAMES = [
+    "Temp X","Temp Y","Temp Z",
+    "Accel coarse X","Accel coarse Y","Accel coarse Z",
+    "Accel fine X","Accel fine Y","Accel fine Z"
+]
+
+print("\nClassifying incidents...\n")
+
+results = []
+
+for i in incidents:
+
+    # fake sensor vector from anomaly score
+    # (until we wire full per-sensor errors)
+    base = df.iloc[i, 1]
+
+    sensor_strength = np.linspace(base*0.7, base*1.3, 9)
+
+    top_ids = np.argsort(sensor_strength)[-3:][::-1]
+    top_sensors = [SENSOR_NAMES[j] for j in top_ids]
+
+    thermal_count = sum(s in THERMAL for s in top_sensors)
+    structural_count = sum(s in STRUCTURAL for s in top_sensors)
+
+    if structural_count > thermal_count:
+        subsystem = "STRUCTURAL / IMU"
+    elif thermal_count > structural_count:
+        subsystem = "THERMAL"
+    else:
+        subsystem = "MIXED"
+
+    print(f"Incident {i+1}")
+    print("Subsystem:", subsystem)
+    print("Top sensors:", ", ".join(top_sensors))
+    print()
+
+    results.append((i+1, subsystem, top_sensors))
+
+    # ----------------------------
+# MERGE SUBSYSTEM INTO CSV
+# ----------------------------
+import pandas as pd
+
+print("\nMerging subsystem labels into incidents CSV...")
+
+df = pd.read_csv("outputs/metrics/incidents_scored.csv")
+
+# results = [(incident_id, subsystem, sensors)]
+subsystems = [r[1] for r in results]
+
+# attach column
+df["subsystem"] = subsystems
+
+# save back
+df.to_csv("outputs/metrics/incidents_scored.csv", index=False)
+
+print("✔ Subsystem column saved to CSV")
+
+
+===== pipeline\compare_models.py =====
+import numpy as np
+import matplotlib.pyplot as plt
+
+print("Loading errors...")
+
+lstm = np.load("outputs/metrics/errors.npy")
+cnn  = np.load("outputs/metrics/errors_cnn.npy")
+
+# use same length
+N = min(len(lstm), len(cnn))
+
+lstm = lstm[:N]
+cnn  = cnn[:N]
+
+print("Plotting comparison...")
+
+plt.figure(figsize=(12,5))
+
+plt.plot(lstm, label="LSTM error", alpha=0.7)
+plt.plot(cnn, label="CNN error", alpha=0.7)
+
+plt.title("Model Reconstruction Error Comparison")
+plt.xlabel("Window index")
+plt.ylabel("Error")
+plt.legend()
+
+plt.savefig("outputs/plots/model_comparison.png")
+plt.show()
+
+
+
+===== pipeline\detect_anomalies.py =====
+import numpy as np
+
+print("Loading reconstruction errors...")
+errors = np.load("errors.npy")
+
+mean = errors.mean()
+std = errors.std()
+
+threshold = mean + 3 * std
+
+print(f"Mean: {mean:.6f}")
+print(f"Std : {std:.6f}")
+print(f"Threshold: {threshold:.6f}")
+
+# detect anomalies
+anomalies = np.where(errors > threshold)[0]
+
+print(f"\nTotal windows: {len(errors)}")
+print(f"Anomalies detected: {len(anomalies)}")
+
+# save anomaly indices
+np.save("anomaly_indices.npy", anomalies)
+
+print("Saved anomaly indices → anomaly_indices.npy")
+
+
+
+===== pipeline\explain_anomalies.py =====
+import torch
+import numpy as np
+import pandas as pd
+from models.lstm.model import LSTMAutoencoder
+from core.build_loader import get_loader
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+print("Loading model...")
+model = LSTMAutoencoder().to(DEVICE)
+model.load_state_dict(torch.load("best_lstm.pt", map_location=DEVICE))
+model.eval()
+
+print("Loading anomaly indices...")
+anoms = np.load("anomaly_indices.npy")
+
+loader = get_loader(batch_size=1, shuffle=False)
+
+print("\nExplaining anomalies...\n")
+
+for i, (x, y) in enumerate(loader):
+
+    if i not in anoms:
+        continue
+
+    x = x.to(DEVICE)
+
+    with torch.no_grad():
+        out = model(x)
+
+    # compute feature-wise error
+    err = torch.abs(out - y.to(DEVICE))
+    err = err.cpu().numpy()[0]
+
+    # find top sensors
+    top = np.argsort(err)[::-1][:3]
+
+    print(f"Anomaly window: {i}")
+    print("Top contributing features:", top)
+    print("Errors:", err[top])
+    print()
+
+
+
+===== pipeline\explain_sensor_failure.py =====
+import torch
+import numpy as np
+from core.build_loader import get_loader
+from models.lstm.model import LSTMAutoencoder
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+print("Loading model...")
+model = LSTMAutoencoder().to(DEVICE)
+model.load_state_dict(torch.load("best_lstm.pt", map_location=DEVICE))
+model.eval()
+
+print("Loading anomalies...")
+anomalies = np.load("outputs/metrics/anomaly_indices.npy")
+
+loader = get_loader(batch_size=1, shuffle=False)
+
+print("Explaining anomalies...\n")
+
+sensor_names = [
+    "Temp X", "Temp Y", "Temp Z",
+    "Accel coarse X", "Accel coarse Y", "Accel coarse Z",
+    "Accel fine X", "Accel fine Y", "Accel fine Z"
+]
+
+count = 0
+
+for i, (x, _) in enumerate(loader):
+
+    if i not in anomalies:
+        continue
+
+    x = x.to(DEVICE)
+
+    with torch.no_grad():
+        recon = model(x)
+
+    error = (recon - x).abs().mean(dim=1).cpu().numpy()[0]
+
+    top = np.argsort(error)[-3:][::-1]
+
+    print(f"Anomaly window: {i}")
+    for t in top:
+        print(f"   → {sensor_names[t]} abnormal (error={error[t]:.4f})")
+
+    print()
+
+    count += 1
+    if count >= 10:
+        break
+
+
+
+===== pipeline\final_detector.py =====
+import numpy as np
+
+print("Loading model errors...")
+
+cnn = np.load("outputs/metrics/errors_cnn.npy")
+trans = np.load("outputs/metrics/errors_transformer.npy")
+
+N = min(len(cnn), len(trans))
+cnn = cnn[:N]
+trans = trans[:N]
+
+# combine scores (Transformer stronger)
+score = 0.4 * cnn + 0.6 * trans
+
+mean = score.mean()
+std = score.std()
+threshold = mean + 3 * std
+
+print("\nCombined stats:")
+print("Mean:", mean)
+print("Std:", std)
+print("Threshold:", threshold)
+
+anomalies = np.where(score > threshold)[0]
+
+print("\nFinal anomalies:", len(anomalies))
+
+np.save("outputs/metrics/final_scores.npy", score)
+np.save("outputs/metrics/final_anomalies.npy", anomalies)
+
+print("Saved final anomaly results.")
+
+
+
+===== pipeline\interpret_incidents.py =====
+import pandas as pd
+
+print("Loading scored incidents...")
+
+df = pd.read_csv("outputs/metrics/incidents_scored.csv")
+
+print("\nMISSION INCIDENT INTERPRETATION\n")
+
+for i, row in df.iterrows():
+
+    severity = row["severity_score"]
+    subsystem = row.get("subsystem", "Unknown")
+    duration = row["duration_windows"]
+
+    print(f"Incident {row['incident']}")
+
+    # --- Interpretation logic ---
+    if severity < 0.2:
+        meaning = "Minor fluctuation"
+        risk = "Safe"
+
+    elif severity < 0.5:
+        meaning = "Localized disturbance"
+        risk = "Monitor"
+
+    elif severity < 1.5:
+        meaning = "Subsystem stress detected"
+        risk = "Warning"
+
+    else:
+        meaning = "Potential subsystem instability"
+        risk = "Critical"
+
+    # duration interpretation
+    if duration <= 2:
+        pattern = "Transient event"
+    elif duration <= 10:
+        pattern = "Short disturbance"
+    else:
+        pattern = "Persistent anomaly"
+
+    print(f"Subsystem: {subsystem}")
+    print(f"Type: {meaning}")
+    print(f"Pattern: {pattern}")
+    print(f"Risk Level: {risk}")
+    print("-"*40)
+
+
+===== pipeline\make_windows.py =====
+import os
+import glob
+import torch
+import pandas as pd
+from tqdm import tqdm
+
+# ===== SETTINGS =====
+INPUT_DIR = "normalized"      # folder where normalized CSVs are
+OUTPUT_DIR = "windows_pt"     # folder to save tensors
+WINDOW = 128                  # your choice
+STRIDE = 1                    # sliding step
+
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+files = sorted(glob.glob(os.path.join(INPUT_DIR, "*.csv")))
+
+print(f"Found {len(files)} normalized files")
+
+total_windows = 0
+
+for file in files:
+    print(f"\nProcessing {os.path.basename(file)}")
+
+    df = pd.read_csv(file)
+
+    # drop time column if exists
+    if "Time" in df.columns:
+        df = df.drop(columns=["Time"])
+
+    data = torch.tensor(df.values, dtype=torch.float32)
+
+    N = data.shape[0]
+
+    if N < WINDOW:
+        print("Skipped (too small)")
+        continue
+
+    windows = []
+
+    for i in range(0, N - WINDOW, STRIDE):
+        win = data[i:i+WINDOW]
+        windows.append(win)
+
+    windows = torch.stack(windows)
+
+    save_name = os.path.basename(file).replace(".csv", ".pt")
+    save_path = os.path.join(OUTPUT_DIR, save_name)
+
+    torch.save(windows, save_path)
+
+    print(f"Saved {windows.shape} → {save_name}")
+
+    total_windows += windows.shape[0]
+
+print("\nTOTAL WINDOWS:", total_windows)
+print("WINDOW GENERATION DONE ✅")
+
+
+
+===== pipeline\map_anomalies_to_time.py =====
+import os
+import numpy as np
+import pandas as pd
+
+WINDOW = 128
+DATA_DIR = "normalized"
+
+print("Loading anomaly indices...")
+anoms = np.load("anomaly_indices.npy")
+
+files = sorted([
+    f for f in os.listdir(DATA_DIR)
+    if f.endswith(".csv")
+])
+
+print("Mapping anomalies to timestamps...\n")
+
+current_index = 0
+
+for file in files:
+    path = os.path.join(DATA_DIR, file)
+
+    df = pd.read_csv(path, usecols=[0])   # only timestamp column
+    rows = len(df)
+
+    usable = rows - WINDOW
+    if usable <= 0:
+        continue
+
+    # check if anomaly index falls inside this file
+    for a in anoms:
+        if current_index <= a < current_index + usable:
+
+            local = a - current_index
+            timestamp = df.iloc[local + WINDOW][0]
+
+            print(f"Anomaly in file: {file}")
+            print(f"Timestamp: {timestamp}")
+            print()
+
+    current_index += usable
+
+
+
+===== pipeline\map_anomalies_to_time1.py =====
+import numpy as np
+import pandas as pd
+
+print("Loading anomalies...")
+anoms = np.load("outputs/metrics/anomaly_indices.npy")
+
+print("Loading first CSV to get timestamps...")
+df = pd.read_csv("data/normalized/20230824.csv")
+
+# assume timestamp column exists
+# change name if needed
+time_col = df.columns[0]
+
+print("\nMapping anomalies to real time:\n")
+
+for a in anoms[:20]:
+    if a < len(df):
+        t = df.iloc[a][time_col]
+        print(f"Window {a} → time = {t}")
+
+
+
+===== pipeline\mission_action.py =====
+import pandas as pd
+
+print("Loading mission + subsystem status...")
+
+mission = pd.read_csv("outputs/metrics/mission_status.csv")
+subsys  = pd.read_csv("outputs/metrics/subsystem_status.csv")
+
+mission_status = mission["status"][0]
+subsystem = subsys["subsystem"][0]
+sub_status = subsys["status"][0]
+
+print("\nEvaluating mission response...\n")
+
+# --- Decision Logic ---
+if mission_status == "SAFE":
+    action = "Nominal operation"
+
+elif mission_status == "WARNING":
+    if sub_status == "WARNING":
+        action = f"Increase monitoring of {subsystem}"
+    else:
+        action = "Monitor system"
+
+elif mission_status == "CRITICAL":
+    if "STRUCTURAL" in subsystem:
+        action = "Switch to SAFE MODE"
+    elif "POWER" in subsystem:
+        action = "Limit power usage"
+    elif "THERMAL" in subsystem:
+        action = "Activate thermal regulation"
+    else:
+        action = "Immediate investigation required"
+
+else:
+    action = "Unknown state"
+
+print("MISSION ACTION RECOMMENDATION\n")
+print("Action:", action)
+
+pd.DataFrame([{
+    "mission_status": mission_status,
+    "subsystem": subsystem,
+    "subsystem_status": sub_status,
+    "recommended_action": action
+}]).to_csv("outputs/metrics/mission_action.csv", index=False)
+
+print("\nSaved → outputs/metrics/mission_action.csv")
+
+
+===== pipeline\mission_decision.py =====
+import pandas as pd
+
+print("Loading incident severity data...")
+
+df = pd.read_csv("outputs/metrics/incidents_scored.csv")
+
+print("\nAnalyzing mission condition...")
+
+# ---- compute stats ----
+max_sev = df["severity_score"].max()
+avg_sev = df["severity_score"].mean()
+count = len(df)
+
+print("\nMax Severity:", round(max_sev,3))
+print("Average Severity:", round(avg_sev,3))
+print("Incident Count:", count)
+
+print("\nMISSION DECISION\n")
+
+# ---- decision logic ----
+if max_sev > 0.7:
+    status = "CRITICAL"
+elif max_sev > 0.4:
+    status = "WARNING"
+else:
+    status = "NORMAL"
+
+print("Status:", status)
+
+# ---- save clean decision ----
+decision = pd.DataFrame({
+    "status": [status],
+    "max_severity": [max_sev],
+    "avg_severity": [avg_sev],
+    "incident_count": [count]
+})
+
+decision.to_csv("outputs/metrics/mission_status.csv", index=False)
+
+print("\nSaved → outputs/metrics/mission_status.csv")
+
+
+===== pipeline\normalize.py =====
+import os
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
+import joblib
+
+DATA_PATH = "processed"
+SAVE_PATH = "normalized"
+
+os.makedirs(SAVE_PATH, exist_ok=True)
+
+scaler = StandardScaler()
+
+all_files = sorted([f for f in os.listdir(DATA_PATH) if f.endswith(".csv")])
+
+print("Fitting scaler on all data...")
+
+# --- first pass: fit scaler on all data
+for file in all_files:
+    df = pd.read_csv(os.path.join(DATA_PATH, file))
+    df = df.drop(columns=["Time"])
+    scaler.partial_fit(df.values)
+
+# save scaler
+joblib.dump(scaler, "scaler.save")
+print("Scaler saved")
+
+# --- second pass: transform and save
+print("Applying normalization...")
+
+for file in all_files:
+    print("Processing", file)
+
+    df = pd.read_csv(os.path.join(DATA_PATH, file))
+    time_col = df["Time"]
+    features = df.drop(columns=["Time"])
+
+    scaled = scaler.transform(features.values)
+
+    new_df = pd.DataFrame(scaled, columns=features.columns)
+    new_df.insert(0, "Time", time_col)
+
+    new_df.to_csv(os.path.join(SAVE_PATH, file), index=False)
+
+print("ALL FILES NORMALIZED ✅")
+
+
+
+===== pipeline\plot_anomalies.py =====
+import numpy as np
+import matplotlib.pyplot as plt
+
+print("Loading errors...")
+errors = np.load("errors.npy")
+
+print("Loading anomaly indices...")
+anoms = np.load("anomaly_indices.npy")
+
+plt.figure(figsize=(15,5))
+plt.plot(errors, label="Reconstruction Error")
+
+plt.scatter(
+    anoms,
+    errors[anoms],
+    color="red",
+    s=8,
+    label="Anomalies"
+)
+
+plt.title("Anomaly Detection Over Time")
+plt.xlabel("Window Index")
+plt.ylabel("Reconstruction Error")
+plt.legend()
+plt.tight_layout()
+
+plt.savefig("anomaly_plot.png", dpi=200)
+plt.show()
+
+
+
+===== pipeline\predict_risk.py =====
+import pandas as pd
+import numpy as np
+
+print("Loading incident data...")
+
+df = pd.read_csv("outputs/metrics/incidents_scored.csv")
+
+# ensure sorted by incident id
+df = df.sort_values("incident")
+
+print("\nAnalyzing mission risk trend...\n")
+
+# ---------- SEVERITY TREND ----------
+sev = df["severity_score"].values
+
+if len(sev) > 1:
+    sev_trend = np.polyfit(range(len(sev)), sev, 1)[0]
+else:
+    sev_trend = 0
+
+# ---------- FREQUENCY TREND ----------
+if "start_time" in df.columns:
+    df["start_time"] = pd.to_datetime(df["start_time"])
+    gaps = df["start_time"].diff().dt.total_seconds().dropna()
+
+    if len(gaps) > 1:
+        freq_trend = np.polyfit(range(len(gaps)), gaps, 1)[0]
+    else:
+        freq_trend = 0
+else:
+    freq_trend = 0
+
+# ---------- RISK INTERPRETATION ----------
+if sev_trend > 0.05:
+    severity_msg = "Severity increasing"
+elif sev_trend < -0.05:
+    severity_msg = "Severity decreasing"
+else:
+    severity_msg = "Severity stable"
+
+if freq_trend < 0:
+    freq_msg = "Incidents occurring closer together"
+elif freq_trend > 0:
+    freq_msg = "Incidents spacing increasing"
+else:
+    freq_msg = "Incident frequency stable"
+
+# ---------- FINAL RISK LEVEL ----------
+risk_score = sev.mean()
+
+if risk_score > 2.0:
+    level = "HIGH RISK"
+elif risk_score > 1.0:
+    level = "MODERATE RISK"
+else:
+    level = "LOW RISK"
+
+print("MISSION RISK FORECAST\n")
+
+print("Average severity:", round(risk_score,3))
+print("Severity trend:", severity_msg)
+print("Frequency trend:", freq_msg)
+print("\nPredicted risk level:", level)
+
+# optional save
+with open("outputs/metrics/risk_forecast.txt","w") as f:
+    f.write(f"Average severity: {risk_score}\n")
+    f.write(f"Severity trend: {severity_msg}\n")
+    f.write(f"Frequency trend: {freq_msg}\n")
+    f.write(f"Predicted risk level: {level}\n")
+
+print("\nForecast saved.")
+
+
+===== pipeline\preprocess.py =====
+import os
+import pandas as pd
+
+DATA_PATH = r"ch3_ilsa/ils/data/calibrated"
+SAVE_PATH = r"src/proceed/processed_day1.csv"
+
+def load_one_day(day_folder):
+    day_path = os.path.join(DATA_PATH, day_folder)
+
+    files = [f for f in os.listdir(day_path) if f.endswith(".csv")]
+    print(f"Found {len(files)} files in {day_folder}")
+
+    dfs = []
+    for file in files[:5]: #limit first test
+        file_path = os.path.join(day_path, file)
+        df = pd.read_csv(file_path)
+        dfs.append(df)
+
+    merged = pd.concat(dfs, ignore_index=True)
+    print("Merged shape:", merged.shape)
+
+    return merged
+
+def clean_data(df):
+    # covert time 
+    df["Time"] = pd.to_datetime(df["Time"], errors="coerce")
+
+    # drop rows with bad timestamps
+    df = df.dropna(subset=["Time"])
+
+    # sort bu time 
+    df = df.sort_values("Time")
+
+    #remove duplicates
+    df = df.drop_duplicates()
+
+    #fill missing numeric values
+    df = df.ffill()
+
+    print("Cleaned shape:", df.shape)
+
+    return df
+
+if __name__ == "__main__":
+
+    df = load_one_day("20230824")
+
+    df = clean_data(df)
+
+    df.to_csv(SAVE_PATH, index=False)
+    print("Saved cleaned file")
+
+
+===== pipeline\preprocess_all.py =====
+import os
+import pandas as pd
+
+DATA_PATH = r"ch3_ilsa/ils/data/calibrated"
+SAVE_PATH = r"processed"
+
+os.makedirs(SAVE_PATH, exist_ok=True)
+
+def process_day(day_folder):
+
+    day_path = os.path.join(DATA_PATH, day_folder)
+
+    if not os.path.isdir(day_path):
+        return
+
+    files = [f for f in os.listdir(day_path) if f.endswith(".csv")]
+
+    if len(files) == 0:
+        return
+
+    print(f"\nProcessing {day_folder} → {len(files)} files")
+
+    dfs = []
+    for file in files:
+        df = pd.read_csv(os.path.join(day_path, file))
+        dfs.append(df)
+
+    df = pd.concat(dfs, ignore_index=True)
+
+    # cleaning
+    df["Time"] = pd.to_datetime(df["Time"], errors="coerce")
+    df = df.dropna(subset=["Time"])
+    df = df.sort_values("Time")
+    df = df.drop_duplicates()
+    df = df.ffill()
+
+    print("Final shape:", df.shape)
+
+    save_file = os.path.join(SAVE_PATH, f"{day_folder}.csv")
+    df.to_csv(save_file, index=False)
+
+    print("Saved →", save_file)
+
+
+if __name__ == "__main__":
+
+    folders = sorted(os.listdir(DATA_PATH))
+
+    for folder in folders:
+        process_day(folder)
+
+    print("\nALL DAYS PROCESSED ✅")
+
+
+
+===== pipeline\score_incidents.py =====
+import numpy as np
+import pandas as pd
+import torch
+
+from core.sensor_graph import edge_index
+from models.gnn.model import SpacecraftGNN
+
+
+print("Loading anomaly data...")
+
+scores = np.load("outputs/metrics/final_scores.npy")
+anoms  = np.load("outputs/metrics/final_anomalies.npy")
+
+# load real per-sensor errors
+sensor_errors = np.load("outputs/metrics/sensor_errors_lstm.npy")
+
+# normalize anomaly scores
+scores = (scores - scores.mean()) / (scores.std() + 1e-8)
+scores = np.abs(scores)
+
+
+print("Grouping anomalies into incidents...")
+
+incidents = []
+current = [anoms[0]]
+
+for i in range(1, len(anoms)):
+    if anoms[i] - anoms[i-1] < 20:
+        current.append(anoms[i])
+    else:
+        incidents.append(current)
+        current = [anoms[i]]
+
+incidents.append(current)
+
+print(f"Detected {len(incidents)} incidents")
+
+
+print("Loading GNN model...")
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+model = SpacecraftGNN().to(DEVICE)
+model.load_state_dict(torch.load("outputs/weights/best_gnn.pt", map_location=DEVICE))
+model.eval()
+
+edge_index = edge_index.to(DEVICE)
+
+
+print("\nScoring incidents...\n")
+
+results = []
+
+for idx, inc in enumerate(incidents):
+
+    # ---------- anomaly strength ----------
+    window_errors = scores[inc]
+
+    anomaly_strength = float(window_errors.mean())
+
+    # normalize using incident context instead of dataset
+    anomaly_strength = anomaly_strength / (window_errors.std() + 1e-6)
+
+    # scale safely
+    anomaly_strength = np.tanh(anomaly_strength)
+
+    print("DEBUG anomaly_strength:", anomaly_strength)
+
+    print("DEBUG anomaly_strength:", anomaly_strength)
+
+    # ---------- duration ----------
+    duration = len(inc)
+
+    # ---------- REAL SENSOR VECTOR ----------
+    sensor_vec = sensor_errors[inc].mean(axis=0)
+
+    # Step 1 — remove scale bias
+    sensor_vec = sensor_vec / (np.linalg.norm(sensor_vec) + 1e-6)
+
+    # Step 2 — enhance relational contrast
+    sensor_vec = sensor_vec - sensor_vec.mean()
+    print("DEBUG sensor_vec:", sensor_vec)
+    
+    node_vec = torch.tensor(
+        sensor_vec,
+        dtype=torch.float32
+    ).unsqueeze(-1).to(DEVICE)
+
+    # ---------- GNN RISK ----------
+    with torch.no_grad():
+        gnn_out = model(node_vec, edge_index)
+        graph_risk = float(gnn_out.abs().mean().item())
+
+    graph_risk = np.tanh(graph_risk)
+
+    print("DEBUG graph_risk:", graph_risk)
+
+    print("DEBUG graph_risk:", graph_risk)
+
+    # ---------- FINAL SEVERITY ----------
+    severity = (
+        0.55 * anomaly_strength +
+        0.30 * graph_risk +
+        0.15 * (duration / 50)
+    )
+
+    # ---------- LABEL ----------
+    if severity < 0.15:
+        label = "LOW"
+    elif severity < 0.35:
+        label = "MEDIUM"
+    elif severity < 0.60:
+        label = "HIGH"
+    else:
+        label = "CRITICAL"
+
+    results.append({
+        "incident": idx+1,
+        "duration_windows": duration,
+        "anomaly_strength": anomaly_strength,
+        "graph_risk": graph_risk,
+        "severity_score": severity,
+        "label": label
+    })
+
+
+# ---------- SORT ----------
+results = sorted(results, key=lambda x: x["severity_score"], reverse=True)
+
+
+print("\nTOP INCIDENTS:\n")
+
+for r in results[:5]:
+    print(
+        f"Incident {r['incident']} | "
+        f"Severity={r['severity_score']:.3f} | "
+        f"Level={r['label']} | "
+        f"Duration={r['duration_windows']}"
+    )
+
+
+# ---------- SAVE ----------
+df = pd.DataFrame(results)
+df.to_csv("outputs/metrics/incidents_scored.csv", index=False)
+
+print("\nSaved → outputs/metrics/incidents_scored.csv")
+
+
+===== pipeline\subsystem_decision.py =====
+import pandas as pd
+
+print("Loading incident + subsystem data...")
+
+df = pd.read_csv("outputs/metrics/incidents_scored.csv")
+
+print("\nAnalyzing subsystem health...\n")
+
+# group by subsystem
+subsystem_health = {}
+
+for _, row in df.iterrows():
+    subsystem = row.get("subsystem", "UNKNOWN")
+    severity = row["severity_score"]
+
+    if subsystem not in subsystem_health:
+        subsystem_health[subsystem] = []
+
+    subsystem_health[subsystem].append(severity)
+
+
+print("SUBSYSTEM STATUS\n")
+
+results = []
+
+for subsystem, values in subsystem_health.items():
+
+    avg = sum(values) / len(values)
+    max_val = max(values)
+
+    if max_val < 0.25:
+        status = "NOMINAL"
+    elif max_val < 0.45:
+        status = "WATCH"
+    elif max_val < 0.70:
+        status = "WARNING"
+    else:
+        status = "CRITICAL"
+
+    print(f"{subsystem} → {status}")
+
+    results.append({
+        "subsystem": subsystem,
+        "avg_severity": avg,
+        "max_severity": max_val,
+        "status": status
+    })
+
+pd.DataFrame(results).to_csv(
+    "outputs/metrics/subsystem_status.csv",
+    index=False
+)
+
+print("\nSaved → outputs/metrics/subsystem_status.csv")
+
+
+===== core\ai_reasoner.py =====
+import requests
+import numpy as np
+
+def clean_dict(d):
+    return {k: float(v) if isinstance(v, (np.float32, np.float64)) else v for k, v in d.items()}
+
+def format_sensor_values(sensor_dict):
+
+    formatted = {}
+
+    for k, v in sensor_dict.items():
+        formatted[k] = round(float(v), 6)
+
+    return formatted
+
+class AIReasoner:
+
+    def __init__(self, state_manager):
+
+        self.state_manager = state_manager
+        self.url = "http://localhost:11434/api/generate"
+
+    def answer(self, question):
+
+        state = self.state_manager.get_current_state()
+
+        prompt = f"""
+You are an AI spacecraft monitoring assistant.
+
+Mission status: {state['status']}
+Anomaly score: {state['score']}
+sensors = clean_dict(state["sensors"])
+
+Sensor errors:
+{format_sensor_values(state["sensors"])}
+
+Subsystem status:
+{state['subsystems']}
+
+Answer the operator question clearly.
+
+Operator question:
+{question}
+"""
+
+        response = requests.post(
+            self.url,
+            json={
+                "model": "llama3",
+                "prompt": prompt,
+                "stream": False
+            }
+        )
+
+        return response.json()["response"]
+
+
+===== core\build_graph_features.py =====
+import numpy as np
+import torch
+
+print("Loading real sensor errors...")
+
+sensor_errors = np.load("outputs/metrics/sensor_errors_lstm.npy")
+
+# limit size
+sensor_errors = sensor_errors[:1000]
+
+# normalize per sensor
+mean = sensor_errors.mean(axis=0)
+std = sensor_errors.std(axis=0) + 1e-8
+
+sensor_errors = (sensor_errors - mean) / std
+
+# pattern normalization per time window
+norms = np.linalg.norm(sensor_errors, axis=1, keepdims=True) + 1e-6
+sensor_errors = sensor_errors / norms
+
+sensor_errors = sensor_errors - sensor_errors.mean(axis=1, keepdims=True)
+
+features = torch.tensor(sensor_errors, dtype=torch.float32)
+
+print("Feature shape:", features.shape)
+
+torch.save(features, "outputs/metrics/graph_features.pt")
+print("Saved -> outputs/metrics/graph_features.pt")
+
+
+===== core\build_loader.py =====
+from torch.utils.data import DataLoader
+from core.dataset import SatelliteDataset
+
+
+def get_loader(batch_size=64, shuffle=True):
+
+    dataset = SatelliteDataset(data_dir="data/normalized")
+
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=0,      # keep 0 on Windows
+        pin_memory=True
+    )
+
+    return loader
+
+
+
+===== core\dataloader.py =====
+import os
+import pandas as pd
+import torch
+
+DATA_PATH = "processed"
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def load_day(day_file):
+
+    path = os.path.join(DATA_PATH, day_file)
+
+    df = pd.read_csv(path)
+
+    # drop time column for model
+    df = df.drop(columns=["Time"])
+
+    # convert to tensor
+    tensor = torch.tensor(df.values, dtype=torch.float32)
+
+    return tensor
+
+
+def day_generator():
+
+    files = sorted(os.listdir(DATA_PATH))
+
+    for file in files:
+        if file.endswith(".csv"):
+            print(f"Loading {file}")
+            yield load_day(file)
+
+
+if __name__ == "__main__":
+
+    for day_tensor in day_generator():
+
+        # send to GPU safely
+        day_tensor = day_tensor.to(DEVICE)
+
+        print("Tensor shape:", day_tensor.shape)
+        print("Device:", day_tensor.device)
+
+        # simulate model step
+        mean = day_tensor.mean()
+
+        print("Mean value:", mean.item())
+
+
+
+===== core\dataset.py =====
+import os
+import pandas as pd
+import torch
+from torch.utils.data import Dataset
+
+
+MODE = "debug"
+
+LIMITS = {
+    "debug": 500_000,
+    "train": 5_000_000,
+    "full": None
+}
+
+
+class SatelliteDataset(Dataset):
+
+    def __init__(self, data_dir):
+        print("Indexing CSV files...")
+
+        self.files = sorted([
+            os.path.join(data_dir, f)
+            for f in os.listdir(data_dir)
+            if f.endswith(".csv")
+        ])
+
+        self.window = 128
+        self.index = []
+
+        self.cache = {}   # 🔥 stores loaded files
+
+        limit = LIMITS[MODE]
+        total = 0
+
+        for file in self.files:
+
+            # Count rows quickly
+            n_rows = sum(1 for _ in open(file)) - 1
+            usable = n_rows - self.window
+
+            if usable <= 0:
+                continue
+
+            for i in range(usable):
+                self.index.append((file, i))
+                total += 1
+
+                if limit and total >= limit:
+                    break
+
+            if limit and total >= limit:
+                break
+
+        print(f"Total samples: {len(self.index):,}")
+
+    # ---------------------------
+    # Load file only once
+    # ---------------------------
+    def _load_file(self, file):
+
+        if file not in self.cache:
+
+            df = pd.read_csv(file, engine="python", on_bad_lines="skip")
+
+            df = df.select_dtypes(include=['number'])
+            df = df.astype("float32")
+
+            tensor = torch.tensor(df.values, dtype=torch.float32)
+
+            self.cache[file] = tensor
+
+        return self.cache[file]
+
+    # ---------------------------
+    def __len__(self):
+        return len(self.index)
+
+    # ---------------------------
+    def __getitem__(self, idx):
+
+        file, start = self.index[idx]
+
+        data = self._load_file(file)
+
+        x = data[start:start+self.window]
+        y = data[start+self.window]
+
+        return x, y
+
+
+
+===== core\mission_assistant.py =====
+class MissionAssistant:
+
+    def __init__(self, state_manager):
+
+        self.state_manager = state_manager
+
+    def answer(self, question):
+
+        question = question.lower()
+
+        state = self.state_manager.get_current_state()
+
+        if state["score"] is None:
+            return "Monitoring system is initializing."
+
+        if "health" in question:
+
+            return (
+                f"Spacecraft health is {state['status']}. "
+                f"Latest anomaly score is {state['score']:.4f}."
+            )
+
+        if "risk" in question:
+
+            return f"Current mission risk level is {state['status']}."
+
+        if "sensor" in question:
+
+            sensors = self.state_manager.get_sensor_anomalies()
+
+            if not sensors:
+                return "No sensors are showing abnormal behaviour."
+
+            return f"Anomalies detected in sensors: {', '.join(sensors)}."
+
+        if "anomaly" in question:
+
+            return f"Latest anomaly score is {state['score']:.4f}."
+
+        return "Monitoring system is active."
+    
+        if "subsystem" in question:
+
+            unstable = self.state_manager.get_unstable_subsystems()
+
+            if not unstable:
+                return "All spacecraft subsystems are stable."
+
+            return f"Unstable subsystems detected: {', '.join(unstable)}."
+        if "history" in question or "previous" in question:
+
+            history = self.state_manager.get_recent_history()
+
+            if not history:
+                return "No historical telemetry events recorded yet."
+
+            response = "Recent mission states:\n"
+
+            for entry in history[-5:]:
+
+                response += (
+                    f"{entry['time']} → "
+                    f"{entry['status']} "
+                    f"(score {entry['score']:.2f})\n"
+                )
+
+            return response
+
+
+===== core\mission_core.py =====
+import numpy as np
+from datetime import datetime
+
+
+class MissionCore:
+
+    def __init__(self):
+        # Sensor → Subsystem mapping
+        self.subsystem_map = {
+            "imu": "navigation",
+            "gyro": "navigation",
+            "accelerometer": "navigation",
+
+            "temp": "thermal",
+            "heat": "thermal",
+
+            "pressure": "propulsion",
+            "flow": "propulsion"
+        }
+
+        # Decision thresholds
+        self.anomaly_threshold = 0.7
+        self.warning_threshold = 0.45
+        self.critical_threshold = 0.75
+
+    # ---------------------------------------------------------
+    # Subsystem Aggregation
+    # ---------------------------------------------------------
+    def aggregate_subsystems(self, anomaly_scores):
+
+        subsystem_scores = {}
+
+        for sensor, score in anomaly_scores.items():
+            subsystem = self.subsystem_map.get(sensor.lower())
+            if subsystem:
+                subsystem_scores.setdefault(subsystem, []).append(score)
+
+        subsystem_state = {}
+        subsystem_strength = {}
+
+        for subsystem, scores in subsystem_scores.items():
+
+            avg_score = np.mean(scores)
+            subsystem_strength[subsystem] = round(float(avg_score), 3)
+
+            if avg_score > self.anomaly_threshold:
+                subsystem_state[subsystem] = "UNSTABLE"
+            elif avg_score > self.warning_threshold:
+                subsystem_state[subsystem] = "WARNING"
+            else:
+                subsystem_state[subsystem] = "STABLE"
+
+        return subsystem_state, subsystem_strength
+
+    # ---------------------------------------------------------
+    # Confidence Engine
+    # ---------------------------------------------------------
+    def compute_confidence(self, model_scores, final_risk):
+
+        agreement_count = 0
+        total_models = len(model_scores)
+
+        for score in model_scores:
+            if score > self.anomaly_threshold:
+                agreement_count += 1
+
+        agreement_ratio = agreement_count / total_models if total_models > 0 else 0
+
+        # Blend model agreement with risk magnitude
+        confidence = (agreement_ratio * 0.6) + (final_risk * 0.4)
+
+        return round(min(confidence, 1.0), 3)
+
+    # ---------------------------------------------------------
+    # Risk Fusion
+    # ---------------------------------------------------------
+    def compute_risk(self, anomaly_scores, trend_score, subsystem_strength):
+
+        anomaly_intensity = np.mean(list(anomaly_scores.values())) if anomaly_scores else 0
+
+        subsystem_intensity = np.mean(list(subsystem_strength.values())) if subsystem_strength else 0
+
+        # Weighted fusion
+        risk = (
+            (0.4 * anomaly_intensity) +
+            (0.3 * trend_score) +
+            (0.3 * subsystem_intensity)
+        )
+
+        return round(min(risk, 1.0), 3)
+
+    # ---------------------------------------------------------
+    # Mission Status Decision
+    # ---------------------------------------------------------
+    def determine_status(self, risk_score):
+
+        if risk_score >= self.critical_threshold:
+            return "CRITICAL"
+        elif risk_score >= self.warning_threshold:
+            return "WARNING"
+        else:
+            return "SAFE"
+
+    # ---------------------------------------------------------
+    # Root Cause Analysis
+    # ---------------------------------------------------------
+    def root_cause_analysis(self, anomaly_scores):
+
+        imu = anomaly_scores.get("imu", 0)
+        temp = anomaly_scores.get("temp", 0)
+        pressure = anomaly_scores.get("pressure", 0)
+
+        if imu > 0.7 and temp < 0.4:
+            return "Likely mechanical vibration affecting navigation subsystem"
+
+        if temp > 0.7:
+            return "Thermal stress condition detected"
+
+        if pressure > 0.7:
+            return "Propulsion system instability detected"
+
+        return "No dominant failure pattern detected"
+
+    # ---------------------------------------------------------
+    # Action Recommendation
+    # ---------------------------------------------------------
+    def recommend_action(self, mission_status):
+
+        if mission_status == "CRITICAL":
+            return "Immediate subsystem isolation and switch to backup channels"
+
+        if mission_status == "WARNING":
+            return "Increase monitoring frequency and validate sensor integrity"
+
+        return "Normal operation"
+
+    # ---------------------------------------------------------
+    # MASTER FUSION METHOD
+    # ---------------------------------------------------------
+    def generate_mission_report(
+        self,
+        anomaly_scores,
+        model_scores,
+        trend_score,
+        incidents
+    ):
+
+        timestamp = datetime.utcnow().isoformat()
+
+        # Subsystem Analysis
+        subsystem_state, subsystem_strength = self.aggregate_subsystems(anomaly_scores)
+
+        # Risk Computation
+        risk_score = self.compute_risk(anomaly_scores, trend_score, subsystem_strength)
+
+        # Mission Status
+        mission_status = self.determine_status(risk_score)
+
+        # Confidence
+        confidence = self.compute_confidence(model_scores, risk_score)
+
+        # Root Cause
+        root_cause = self.root_cause_analysis(anomaly_scores)
+
+        # Action
+        action = self.recommend_action(mission_status)
+
+        return {
+            "timestamp": timestamp,
+            "mission_status": mission_status,
+            "risk_score": risk_score,
+            "confidence": confidence,
+            "subsystems": subsystem_state,
+            "incidents": incidents,
+            "root_cause": root_cause,
+            "recommended_action": action
+        }
+
+
+===== core\mission_state_manager.py =====
+from datetime import datetime
+
+
+class MissionStateManager:
+
+    def __init__(self):
+
+        self.current_score = None
+        self.current_status = "UNKNOWN"
+
+        self.sensor_errors = {}
+        self.subsystem_status = {}
+
+        self.last_update = None
+
+        # NEW: history storage
+        self.history = []
+
+    def update_state(self, score, status, sensors, subsystems):
+
+        timestamp = datetime.utcnow()
+
+        self.current_score = score
+        self.current_status = status
+        self.sensor_errors = sensors
+        self.subsystem_status = subsystems
+        self.last_update = timestamp
+
+        # store historical snapshot
+        self.history.append({
+            "time": timestamp,
+            "score": score,
+            "status": status,
+            "sensors": sensors,
+            "subsystems": subsystems
+        })
+
+        # keep memory manageable
+        if len(self.history) > 10000:
+            self.history.pop(0)
+
+    def get_current_state(self):
+
+        return {
+            "status": self.current_status,
+            "score": self.current_score,
+            "sensors": self.sensor_errors,
+            "subsystems": self.subsystem_status,
+            "last_update": self.last_update
+        }
+
+    def get_recent_history(self, n=10):
+
+        return self.history[-n:]
+    def get_subsystem_history(self, subsystem):
+
+        events = []
+
+        for entry in self.history:
+
+            if subsystem in entry["subsystems"]:
+
+                status = entry["subsystems"][subsystem]["status"]
+
+                if status != "STABLE":
+
+                    events.append({
+                        "time": entry["time"],
+                        "status": status
+                    })
+
+        return events
+    
+    def get_sensor_anomalies(self, threshold=1.0):
+
+        anomalies = []
+
+        for sensor, value in self.sensor_errors.items():
+
+            if value > threshold:
+                anomalies.append(sensor)
+
+        return anomalies
+
+
+===== core\monitoring_service.py =====
+import os
+import pandas as pd
+from collections import deque
+from models.inference_manager import InferenceManager
+from core.subsystem_analyzer import SubsystemAnalyzer
+
+
+class MonitoringService:
+
+    def __init__(self, data_root, state_manager):
+
+        self.subsystem_analyzer = SubsystemAnalyzer()
+
+        self.data_root = data_root
+        self.state_manager = state_manager
+        self.buffer = deque(maxlen=128)
+
+        self.inference = InferenceManager()
+
+        self.feature_columns = [
+            "xTemp",
+            "zTemp",
+            "yTemp",
+            "X Coarse Acceleration",
+            "Y Coarse Acceleration",
+            "Z Coarse Acceleration",
+            "X Fine Acceleration",
+            "Y Fine Acceleration",
+            "Z Fine Acceleration"
+        ]
+
+        self.counter = 0
+
+    def interpret_score(self, score):
+
+        if score < 1.0:
+            return "SAFE"
+        elif score < 3.0:
+            return "WARNING"
+        else:
+            return "CRITICAL"
+
+    def start(self):
+
+        folders = sorted(os.listdir(self.data_root))
+
+        for folder in folders:
+
+            path = os.path.join(self.data_root, folder)
+
+            if not os.path.isdir(path):
+                continue
+
+            files = sorted([
+                f for f in os.listdir(path)
+                if f.endswith(".csv")
+            ])
+
+            for file in files:
+
+                full_path = os.path.join(path, file)
+
+                for chunk in pd.read_csv(full_path, chunksize=1000):
+
+                    for _, row in chunk.iterrows():
+
+                        sample = row[self.feature_columns].values
+
+                        self.buffer.append(sample)
+
+                        if len(self.buffer) == 128:
+
+                            self.counter += 1
+
+                            if self.counter % 32 == 0:
+
+                                window = pd.DataFrame(self.buffer).values
+
+                                result = self.inference.predict("lstm", window)
+
+                                score = result["overall_score"]
+
+                                sensors = result["sensor_errors"]
+
+                                status = self.interpret_score(score)
+
+                                subsystems = self.subsystem_analyzer.analyze(sensors)
+
+                                self.state_manager.update_state(
+                                    score=score,
+                                    status=status,
+                                    sensors=sensors,
+                                    subsystems=subsystems
+                                )
+
+
+===== core\realtime_controller.py =====
+import os
+import pandas as pd
+from datetime import timedelta
+from models.inference_manager import InferenceManager
+
+
+class RealtimeController:
+
+    def __init__(self, data_root="data/ch3_ilsa/ils/data/calibrated"):
+
+        self.data_root = data_root
+        self.inference = InferenceManager()
+
+        # Feature columns used during training
+        self.feature_columns = [
+            "xTemp",
+            "zTemp",
+            "yTemp",
+            "X Coarse Acceleration",
+            "Y Coarse Acceleration",
+            "Z Coarse Acceleration",
+            "X Fine Acceleration",
+            "Y Fine Acceleration",
+            "Z Fine Acceleration"
+        ]
+
+    # -------------------------------------------------
+    # Auto Model Selection Logic
+    # -------------------------------------------------
+    def select_model(self, hours):
+
+        if hours <= 3:
+            return "cnn"
+        elif hours <= 12:
+            return "lstm"
+        else:
+            return "transformer"
+
+    # -------------------------------------------------
+    # Load Relevant Files Dynamically
+    # -------------------------------------------------
+    def load_last_hours(self, hours):
+
+        all_data = []
+
+        # Scan date folders
+        for date_folder in sorted(os.listdir(self.data_root)):
+
+            folder_path = os.path.join(self.data_root, date_folder)
+
+            if not os.path.isdir(folder_path):
+                continue
+
+            for file in os.listdir(folder_path):
+
+                if not file.endswith(".csv"):
+                    continue
+
+                file_path = os.path.join(folder_path, file)
+
+                df = pd.read_csv(file_path)
+
+                if "Time" not in df.columns:
+                    continue
+
+                df["Time"] = pd.to_datetime(df["Time"], utc=True)
+
+                all_data.append(df)
+
+        # Combine only relevant recent data
+        full_df = pd.concat(all_data).sort_values("Time")
+
+        latest_time = full_df["Time"].max()
+        threshold = latest_time - timedelta(hours=hours)
+
+        filtered = full_df[full_df["Time"] >= threshold]
+
+        return filtered
+
+    # -------------------------------------------------
+    # Run Anomaly Detection
+    # -------------------------------------------------
+    def detect_anomaly(self, hours):
+
+        model_name = self.select_model(hours)
+
+        df = self.load_last_hours(hours)
+
+        if len(df) < 128:
+            raise ValueError("Not enough telemetry points for inference.")
+
+        data_array = df[self.feature_columns].values
+
+        anomaly_score = self.inference.predict(model_name, data_array)
+
+        return {
+            "model_used": model_name,
+            "hours_analyzed": hours,
+            "data_points": len(df),
+            "anomaly_score": anomaly_score
+        }
+
+
+===== core\run_system.py =====
+import threading
+import time
+
+from core.monitoring_service import MonitoringService
+from core.mission_state_manager import MissionStateManager
+from core.mission_assistant import MissionAssistant
+
+
+def start_monitoring(service):
+    service.start()
+
+
+if __name__ == "__main__":
+
+    data_root = "data/ch3_ilsa/ils/data/calibrated"
+
+    # Create shared state
+    state_manager = MissionStateManager()
+
+    # Create monitoring service
+    monitoring_service = MonitoringService(
+        data_root=data_root,
+        state_manager=state_manager
+    )
+
+    # Create assistant
+    assistant = MissionAssistant(state_manager)
+
+    # Start monitoring in background thread
+    monitor_thread = threading.Thread(
+        target=start_monitoring,
+        args=(monitoring_service,),
+        daemon=True
+    )
+
+    monitor_thread.start()
+
+    print("🚀 Mission AI System Running...")
+    print("Monitoring in background.")
+    print("Type your question or 'exit' to stop.\n")
+
+    # Interactive user loop
+    while True:
+
+        user_input = input("Ask Mission AI: ")
+
+        if user_input.lower() == "exit":
+            print("Stopping system...")
+            break
+
+        response = assistant.answer(user_input)
+        print("AI:", response)
+
+
+===== core\sensor_graph.py =====
+import torch
+
+# ---------------------------
+# SENSOR NODES
+# ---------------------------
+SENSORS = [
+    "Temp X", "Temp Y", "Temp Z",
+    "Accel coarse X", "Accel coarse Y", "Accel coarse Z",
+    "Accel fine X", "Accel fine Y", "Accel fine Z"
+]
+
+# map sensor → node index
+sensor_to_idx = {s: i for i, s in enumerate(SENSORS)}
+
+# ---------------------------
+# EDGES (define relationships)
+# ---------------------------
+
+edges = []
+
+# thermal subsystem (temps connected)
+thermal = ["Temp X", "Temp Y", "Temp Z"]
+for a in thermal:
+    for b in thermal:
+        if a != b:
+            edges.append([sensor_to_idx[a], sensor_to_idx[b]])
+
+# structure subsystem (accel coarse)
+coarse = ["Accel coarse X", "Accel coarse Y", "Accel coarse Z"]
+for a in coarse:
+    for b in coarse:
+        if a != b:
+            edges.append([sensor_to_idx[a], sensor_to_idx[b]])
+
+# structure subsystem (accel fine)
+fine = ["Accel fine X", "Accel fine Y", "Accel fine Z"]
+for a in fine:
+    for b in fine:
+        if a != b:
+            edges.append([sensor_to_idx[a], sensor_to_idx[b]])
+
+# cross-links (thermal affects vibration)
+cross = [
+    ("Temp X", "Accel coarse X"),
+    ("Temp Y", "Accel coarse Y"),
+    ("Temp Z", "Accel coarse Z"),
+]
+
+for a, b in cross:
+    edges.append([sensor_to_idx[a], sensor_to_idx[b]])
+    edges.append([sensor_to_idx[b], sensor_to_idx[a]])
+
+# convert to tensor for PyG
+edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
+
+print("Nodes:", len(SENSORS))
+print("Edges:", edge_index.shape[1])
+
+
+
+===== core\streaming_realtime.py =====
+import os
+import pandas as pd
+import time
+from collections import deque
+from models.inference_manager import InferenceManager
+
+
+class StreamingRealtime:
+
+    def __init__(self, data_root):
+
+        self.data_root = data_root
+        self.window_size = 128
+        self.buffer = deque(maxlen=self.window_size)
+
+        self.inference = InferenceManager()
+
+        self.feature_columns = [
+            "xTemp",
+            "zTemp",
+            "yTemp",
+            "X Coarse Acceleration",
+            "Y Coarse Acceleration",
+            "Z Coarse Acceleration",
+            "X Fine Acceleration",
+            "Y Fine Acceleration",
+            "Z Fine Acceleration"
+        ]
+
+    # ------------------------------------------
+    # Risk Interpretation
+    # ------------------------------------------
+    def interpret_score(self, score):
+
+        if score < 1.0:
+            return "SAFE"
+        elif score < 3.0:
+            return "WARNING"
+        else:
+            return "CRITICAL"
+
+    # ------------------------------------------
+    # Streaming Simulation
+    # ------------------------------------------
+    def start(self, delay=0.0):
+
+        print("Starting real-time telemetry simulation...")
+
+        date_folders = sorted(os.listdir(self.data_root))
+
+        for date_folder in date_folders:
+
+            folder_path = os.path.join(self.data_root, date_folder)
+
+            if not os.path.isdir(folder_path):
+                continue
+
+            csv_files = sorted([
+                f for f in os.listdir(folder_path)
+                if f.endswith(".csv")
+            ])
+
+            for csv_file in csv_files:
+
+                file_path = os.path.join(folder_path, csv_file)
+
+                print(f"\nStreaming file: {csv_file}")
+
+                for chunk in pd.read_csv(file_path, chunksize=1000):
+
+                    for _, row in chunk.iterrows():
+
+                        sample = row[self.feature_columns].values
+                        self.buffer.append(sample)
+
+                        if len(self.buffer) == self.window_size:
+
+                            window_data = pd.DataFrame(self.buffer).values
+
+                            score = self.inference.predict(
+                                "lstm",
+                                window_data
+                            )
+
+                            status = self.interpret_score(score)
+
+                            print(
+                                f"Score: {score:.4f} | Status: {status}"
+                            )
+
+                        if delay > 0:
+                            time.sleep(delay)
+
+
+# -------------------------------------------------
+# Run Directly
+# -------------------------------------------------
+if __name__ == "__main__":
+
+    data_root = "data/ch3_ilsa/ils/data/calibrated"
+
+    engine = StreamingRealtime(data_root)
+
+    engine.start(delay=0.0)
+
+
+===== core\subsystem_analyzer.py =====
+class SubsystemAnalyzer:
+
+    def __init__(self):
+
+        self.subsystem_map = {
+            "thermal": [
+                "xTemp",
+                "yTemp",
+                "zTemp"
+            ],
+
+            "structure": [
+                "X Coarse Acceleration",
+                "Y Coarse Acceleration",
+                "Z Coarse Acceleration"
+            ],
+
+            "navigation": [
+                "X Fine Acceleration",
+                "Y Fine Acceleration",
+                "Z Fine Acceleration"
+            ]
+        }
+
+    def analyze(self, sensor_errors):
+
+        subsystem_status = {}
+
+        for subsystem, sensors in self.subsystem_map.items():
+
+            values = [sensor_errors[s] for s in sensors]
+
+            score = sum(values) / len(values)
+
+            if score < 1:
+                status = "STABLE"
+            elif score < 3:
+                status = "WARNING"
+            else:
+                status = "UNSTABLE"
+
+            subsystem_status[subsystem] = {
+                "score": score,
+                "status": status
+            }
+
+        return subsystem_status
+
+
+===== core\system_controller.py =====
+from core.monitoring_service import MonitoringService
+from core.mission_state_manager import MissionStateManager
+from core.mission_assistant import MissionAssistant
+
+
+if __name__ == "__main__":
+
+    data_root = "data/ch3_ilsa/ils/data/calibrated"
+
+    state_manager = MissionStateManager()
+
+    monitoring_service = MonitoringService(
+        data_root=data_root,
+        state_manager=state_manager
+    )
+
+    assistant = MissionAssistant(state_manager)
+
+    # Start monitoring in background
+    print("Starting monitoring service...")
+    monitoring_service.start()
+
+    # Example query
+    print(assistant.answer("What is spacecraft health?"))
+
+
+===== core\system_engine.py =====
+import threading
+
+from core.monitoring_service import MonitoringService
+from core.mission_state_manager import MissionStateManager
+from core.ai_reasoner import AIReasoner
+
+
+class MissionSystem:
+
+    def __init__(self, data_root):
+
+        # 1️⃣ Create central mission state
+        self.state_manager = MissionStateManager()
+
+        # 2️⃣ Monitoring engine
+        self.monitoring = MonitoringService(
+            data_root=data_root,
+            state_manager=self.state_manager
+        )
+
+        # 3️⃣ AI reasoning layer
+        self.reasoner = AIReasoner(self.state_manager)
+
+    def start_monitoring(self):
+
+        thread = threading.Thread(
+            target=self.monitoring.start,
+            daemon=True
+        )
+
+        thread.start()
+
+    def ask(self, question):
+
+        # Send question to AI reasoning system
+        return self.reasoner.answer(question)
+
+
+===== core\telemetry_streamer.py =====
+import os
+import pandas as pd
+import time
+
+
+class TelemetryStreamer:
+
+    def __init__(self, root_folder):
+
+        self.root_folder = root_folder
+
+        self.day_folders = sorted(
+            [
+                os.path.join(root_folder, d)
+                for d in os.listdir(root_folder)
+                if os.path.isdir(os.path.join(root_folder, d))
+            ]
+        )
+
+    def stream(self):
+
+        for day in self.day_folders:
+
+            print(f"\n📅 Streaming day folder: {day}")
+
+            csv_files = sorted(
+                [
+                    os.path.join(day, f)
+                    for f in os.listdir(day)
+                    if f.endswith(".csv")
+                ]
+            )
+
+            for file in csv_files:
+
+                print("Streaming file:", file)
+
+                try:
+                    df = pd.read_csv(file)
+                except Exception as e:
+                    print("Error reading:", file, e)
+                    continue
+
+                for _, row in df.iterrows():
+
+                    telemetry = row.to_dict()
+
+                    yield telemetry
+
+                    time.sleep(0.01)  # simulate real-time telemetry
+
+
+===== core\test_realtime.py =====
+from core.realtime_controller import RealtimeController
+
+controller = RealtimeController()
+
+result = controller.detect_anomaly(hours=7)
+
+print(result)

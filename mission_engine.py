@@ -36,7 +36,7 @@ from reportlab.platypus import (
 # ================================================================
 DATA_FOLDER        = r"G:\Pro_NML\data\ch3_ilsa\ils\data\calibrated"
 TELEMETRY_INTERVAL = 1.0
-HISTORY_SIZE       = 200    # rolling window (increased for STA/LTA)
+HISTORY_SIZE       = 400    # needs 128+ valid packets for real model inference
 WARN_THRESHOLD     = 0.05
 CRIT_THRESHOLD     = 0.20
 SAMPLE_RATE        = 1.0    # Hz — 1 packet per second
@@ -113,17 +113,97 @@ def safe(d: dict, key: str, default: float = 0.0) -> float:
 
 
 # ================================================================
-# STA/LTA SEISMIC EVENT DETECTOR
+# YOUR REAL PYTORCH MODELS — via InferenceManager
+# ================================================================
+# Loads your trained weights:
+#   outputs/weights/best_lstm.pt
+#   outputs/weights/best_cnn.pt
+#   outputs/weights/best_transformer.pt
+#   outputs/weights/best_gnn.pt
+# Uses your real LSTMAutoencoder, CNNAutoencoder,
+# TransformerAutoencoder, SpacecraftGNN architectures.
+# Falls back to statistical methods if weights not found.
+# ================================================================
+
+import sys as _sys
+_sys.path.insert(0, r"G:\Pro_NML")
+
+# ── Try loading your real InferenceManager ─────────────────────
+_inference_manager = None
+_use_real_models   = False
+
+try:
+    from models.inference_manager import InferenceManager as _IM
+    _inference_manager = _IM(
+        weights_dir=r"G:\Pro_NML\outputs\weights",
+        scaler_path=r"G:\Pro_NML\outputs\scaler.save",
+        window_size=128,
+    )
+    _use_real_models = True
+    print("[ENGINE] ✅ Real PyTorch models loaded — LSTM, CNN, Transformer, GNN")
+except Exception as _e:
+    print(f"[ENGINE] ⚠ Could not load real models: {_e}")
+    print("[ENGINE] Falling back to statistical methods")
+
+# ── Sensor column order must match training ─────────────────────
+# Your InferenceManager.sensor_names order:
+# ["xTemp","zTemp","yTemp","X Coarse Acceleration","Y Coarse Acceleration",
+#  "Z Coarse Acceleration","X Fine Acceleration","Y Fine Acceleration","Z Fine Acceleration"]
+_SENSOR_COLS = [
+    "xTemp", "zTemp", "yTemp",
+    "X Coarse Acceleration", "Y Coarse Acceleration", "Z Coarse Acceleration",
+    "X Fine Acceleration",   "Y Fine Acceleration",   "Z Fine Acceleration",
+]
+
+# Sensor valid ranges — values outside these are bad sensor readings
+# Derived from your data stats: mean ± 5*std, with hard physical limits
+_SENSOR_VALID_RANGES = {
+    "xTemp":                   (-100.0,  100.0),   # °C, normal ~14
+    "zTemp":                   (-100.0,  100.0),   # °C, normal ~14
+    "yTemp":                   (-100.0,  100.0),   # °C, normal ~14
+    "X Coarse Acceleration":   (-5.0,    5.0),
+    "Y Coarse Acceleration":   (-5.0,    5.0),
+    "Z Coarse Acceleration":   (-5.0,    5.0),
+    "X Fine Acceleration":     (-1.0,    1.0),
+    "Y Fine Acceleration":     (-1.0,    1.0),
+    "Z Fine Acceleration":     (-1.0,    1.0),
+}
+
+def _is_valid_packet(packet: dict) -> bool:
+    """Return False if packet contains sensor initialization garbage (e.g. xTemp=-4080)."""
+    for col, (lo, hi) in _SENSOR_VALID_RANGES.items():
+        v = safe(packet, col)
+        if v < lo or v > hi:
+            return False
+    return True
+
+def _build_window() -> np.ndarray:
+    """
+    Build a (N, 9) numpy array from rolling history for real model inference.
+    - Skips invalid packets (sensor init values like -4080)
+    - Returns None if fewer than 128 valid packets available
+    """
+    if len(history) < 2:
+        return None
+    rows = []
+    for h in history:
+        if _is_valid_packet(h):
+            row = [safe(h, col) for col in _SENSOR_COLS]
+            rows.append(row)
+    if len(rows) < 128:
+        return None   # not enough clean data yet
+    return np.array(rows, dtype=np.float32)
+
+
+# ================================================================
+# STA/LTA SEISMIC EVENT DETECTOR (kept — real seismology algorithm)
 # ================================================================
 
 class STALTADetector:
     """
     Classic STA/LTA (Short-Term Average / Long-Term Average) ratio detector.
-    This is the industry-standard algorithm used by seismologists worldwide,
-    including for planetary seismology (InSight, Apollo ALSEP, Chandrayaan-3 ILSA).
-
-    Reference: Allen (1982) — "Automatic earthquake recognition and timing
-    from single traces", Bulletin of the Seismological Society of America.
+    Industry-standard algorithm used by InSight, Apollo ALSEP, Chandrayaan-3 ILSA.
+    Reference: Allen (1982) — Bulletin of the Seismological Society of America.
     """
     def __init__(self, sta_len=STA_LEN, lta_len=LTA_LEN,
                  trigger=STALTA_TRIGGER, detrig=STALTA_DETRIG):
@@ -135,29 +215,24 @@ class STALTADetector:
         self._event_start = None
 
     def compute_ratio(self, signal: np.ndarray) -> float:
-        """Compute current STA/LTA ratio from signal buffer."""
         if len(signal) < self.lta_len:
             return 0.0
-        sq = signal ** 2   # energy proxy
+        sq  = signal ** 2
         sta = float(np.mean(sq[-self.sta_len:]))
         lta = float(np.mean(sq[-self.lta_len:]))
         return sta / lta if lta > 1e-10 else 0.0
 
     def update(self, signal: np.ndarray, t: int) -> dict:
-        """Returns event status dict."""
-        ratio = self.compute_ratio(signal)
+        ratio          = self.compute_ratio(signal)
         event_detected = False
         event_ended    = False
-
         if not self._triggered and ratio >= self.trigger_on:
             self._triggered   = True
             self._event_start = t
             event_detected    = True
-
         elif self._triggered and ratio < self.detrig_off:
             self._triggered = False
             event_ended     = True
-
         return {
             "stalta_ratio":   round(ratio, 4),
             "triggered":      self._triggered,
@@ -166,225 +241,301 @@ class STALTADetector:
             "event_start":    self._event_start,
         }
 
+stalta_detector = STALTADetector()
+
 
 # ================================================================
-# LUNAR QUAKE CLASSIFIER (CNN model — upgraded)
+# LUNAR QUAKE CLASSIFIER (bandpass filter — real signal processing)
 # ================================================================
 
 class CNNSeismicClassifier:
     """
-    Classifies seismic events into lunar quake types using:
-    - Frequency band energy ratios (computed via bandpass filters)
-    - Acceleration RMS across all fine axes
-    - Duration estimation from STA/LTA trigger state
-    - P-wave / S-wave characteristic patterns
-
-    Based on lunar seismology literature:
-    - Nakamura (1977) — Moonquake classification
-    - Lognonné et al. (2020) — InSight SEIS paper
-    - Kumar et al. (2023) — ILSA instrument description
+    Classifies seismic events using real bandpass filters.
+    Based on Nakamura (1977), Lognonné et al. (2020), Kumar et al. (2023).
+    When real CNN weights are available, also runs your trained CNNAutoencoder
+    and uses its reconstruction error to confirm the classification.
     """
     def __init__(self, sr=SAMPLE_RATE):
         self.sr = sr
 
     def _bandpass_energy(self, signal: np.ndarray, low: float, high: float) -> float:
-        """Compute energy in a frequency band via Butterworth bandpass filter."""
         nyq = self.sr / 2.0
-        lo, hi = low / nyq, high / nyq
-        # Clamp to valid range
-        lo = max(0.001, min(lo, 0.999))
-        hi = max(0.001, min(hi, 0.999))
+        lo, hi = max(0.001, min(low/nyq, 0.999)), max(0.001, min(high/nyq, 0.999))
         if lo >= hi or len(signal) < 15:
             return float(np.mean(signal**2))
         try:
             b, a = butter(2, [lo, hi], btype='band')
-            filtered = filtfilt(b, a, signal)
-            return float(np.mean(filtered**2))
+            return float(np.mean(filtfilt(b, a, signal)**2))
         except Exception:
             return float(np.mean(signal**2))
 
-    def classify(self, signal: np.ndarray, rms: float, stalta: dict) -> dict:
-        """Classify seismic event type from signal characteristics."""
-        if len(signal) < self.sr * 5:
-            return {
-                "event_type":    "insufficient_data",
-                "confidence":    0.0,
-                "freq_dominant": 0.0,
-                "band_energies": {},
-                "pattern":       "NORMAL",
-                "severity":      "nominal",
-                "rms_accel":     round(rms, 6),
-            }
-
-        # Compute energy in each characteristic band
-        band_energies = {}
-        for qtype, params in MOONQUAKE_TYPES.items():
-            lo, hi = params["freq_band"]
-            # Cap high freq to Nyquist
-            hi = min(hi, self.sr / 2.0 * 0.95)
-            if lo < hi:
-                band_energies[qtype] = self._bandpass_energy(signal, lo, hi)
-            else:
-                band_energies[qtype] = float(np.mean(signal**2))
-
-        # Dominant frequency estimate via zero-crossing rate
-        if len(signal) > 1:
-            zc = np.where(np.diff(np.sign(signal)))[0]
-            zero_cross_rate = len(zc) / (len(signal) / self.sr)
-            freq_dominant   = zero_cross_rate / 2.0
-        else:
-            freq_dominant = 0.0
-
-        # Classify by dominant band energy
-        if band_energies:
-            best_type = max(band_energies, key=band_energies.get)
-            total_e   = sum(band_energies.values()) or 1e-10
-            confidence = round(band_energies[best_type] / total_e, 3)
-        else:
-            best_type  = "unknown"
-            confidence = 0.0
-
-        # Map to severity
-        if rms > 0.3 or stalta.get("stalta_ratio", 0) > 5.0:
-            severity = "critical"
-            pattern  = "STRONG_SEISMIC_EVENT"
-        elif rms > 0.1 or stalta.get("stalta_ratio", 0) > STALTA_TRIGGER:
-            severity = "warning"
-            pattern  = f"SEISMIC_EVENT_{best_type.upper()}"
-        else:
-            severity = "nominal"
-            pattern  = "NORMAL"
-
-        return {
-            "event_type":    best_type,
-            "confidence":    confidence,
-            "freq_dominant": round(freq_dominant, 4),
-            "band_energies": {k: round(v, 8) for k, v in band_energies.items()},
-            "pattern":       pattern,
-            "severity":      severity,
-            "rms_accel":     round(rms, 6),
-            "fine_x":        round(float(signal[-1]) if len(signal) else 0, 6),
-        }
-
     def run(self, data: dict) -> dict:
-        """Run classifier on current sensor data using rolling history."""
-        # Build signal from history (Z Fine Acceleration is most sensitive axis)
         signal_z = np.array([safe(h, "Z Fine Acceleration") for h in history])
         signal_x = np.array([safe(h, "X Fine Acceleration") for h in history])
         signal_y = np.array([safe(h, "Y Fine Acceleration") for h in history])
-
         fx = safe(data, "X Fine Acceleration")
         fy = safe(data, "Y Fine Acceleration")
         fz = safe(data, "Z Fine Acceleration")
         rms = float(np.sqrt(fx**2 + fy**2 + fz**2))
+        combined = np.sqrt(signal_x**2 + signal_y**2 + signal_z**2) if len(signal_z) > 0 else np.array([rms])
 
-        # Use 3-component combined signal for classification
-        if len(signal_z) > 0:
-            combined = np.sqrt(signal_x**2 + signal_y**2 + signal_z**2)
+        # Bandpass classification
+        band_energies = {}
+        for qtype, params in MOONQUAKE_TYPES.items():
+            lo, hi = params["freq_band"]
+            hi = min(hi, self.sr / 2.0 * 0.95)
+            band_energies[qtype] = self._bandpass_energy(combined, lo, hi) if lo < hi else float(np.mean(combined**2))
+
+        if len(combined) > 1:
+            zc = np.where(np.diff(np.sign(combined)))[0]
+            freq_dominant = len(zc) / (len(combined) / self.sr) / 2.0
         else:
-            combined = np.array([rms])
+            freq_dominant = 0.0
 
-        result = self.classify(combined, rms, stalta_detector.update.__doc__ and {} or {})
-        result["model"] = "CNN"
-        result["fine_y"] = round(fy, 6)
-        result["fine_z"] = round(fz, 6)
-        return result
+        best_type  = max(band_energies, key=band_energies.get) if band_energies else "unknown"
+        total_e    = sum(band_energies.values()) or 1e-10
+        confidence = round(band_energies[best_type] / total_e, 3) if band_energies else 0.0
+
+        # ── Real CNN reconstruction error (if models loaded) ──────
+        # CNN p95=0.000317, p99=0.00872 from your training data
+        CNN_WARN_THRESHOLD = 0.000317
+        CNN_CRIT_THRESHOLD = 0.00872
+        cnn_recon_error = 0.0
+        cnn_norm_score  = 0.0
+        if _use_real_models and _inference_manager:
+            try:
+                win = _build_window()
+                if win is not None and len(win) >= 128:
+                    res = _inference_manager.predict("cnn", win)
+                    cnn_recon_error = float(res["overall_score"])
+                    if cnn_recon_error <= CNN_WARN_THRESHOLD:
+                        cnn_norm_score = cnn_recon_error / CNN_WARN_THRESHOLD * WARN_THRESHOLD
+                    else:
+                        import math as _math
+                        log_raw  = _math.log(cnn_recon_error + 1e-10)
+                        log_warn = _math.log(CNN_WARN_THRESHOLD + 1e-10)
+                        log_crit = _math.log(CNN_CRIT_THRESHOLD + 1e-10)
+                        t = (log_raw - log_warn) / (log_crit - log_warn + 1e-10)
+                        cnn_norm_score = float(min(WARN_THRESHOLD + t * (1.0 - WARN_THRESHOLD), 1.0))
+            except Exception:
+                pass
+
+        # Severity — use normalised CNN score, not raw * 2.0
+        combined_rms = max(rms, cnn_norm_score * 0.5)
+        stalta_ratio = current_state.get("models", {}).get("lstm", {}).get("stalta_ratio", 0)
+        if combined_rms > 0.3 or stalta_ratio > 5.0:
+            severity, pattern = "critical", "STRONG_SEISMIC_EVENT"
+        elif combined_rms > 0.1 or stalta_ratio > STALTA_TRIGGER:
+            severity, pattern = "warning", f"SEISMIC_EVENT_{best_type.upper()}"
+        else:
+            severity, pattern = "nominal", "NORMAL"
+
+        return {
+            "model":            "CNN",
+            "event_type":       best_type,
+            "confidence":       confidence,
+            "freq_dominant":    round(freq_dominant, 4),
+            "band_energies":    {k: round(v, 8) for k, v in band_energies.items()},
+            "pattern":          pattern,
+            "severity":         severity,
+            "rms_accel":        round(rms, 6),
+            "cnn_recon_error":  round(cnn_recon_error, 6),
+            "fine_y":           round(fy, 6),
+            "fine_z":           round(fz, 6),
+        }
 
 
 # ================================================================
-# LSTM ANOMALY DETECTOR (upgraded with STA/LTA)
+# LSTM — YOUR REAL LSTMAutoencoder + STA/LTA
 # ================================================================
-
-stalta_detector = STALTADetector()
 
 class LSTMModel:
     """
-    Upgraded LSTM anomaly detector combining:
-    1. Rolling z-score on xTemp (thermal anomaly)
-    2. STA/LTA ratio on Z Fine Acceleration (seismic onset)
-    3. Combined score = max(thermal_score, seismic_score)
+    Uses your real trained LSTMAutoencoder for reconstruction-based
+    anomaly detection. Score = mean reconstruction error across all 9 sensors.
+    Also runs STA/LTA on Z Fine Acceleration for seismic onset detection.
+    Falls back to z-score if weights not available.
     """
     def run(self, data: dict) -> dict:
         t = current_state.get("packet_count", 0)
 
-        # ── Thermal z-score ──
-        x     = safe(data, "xTemp")
-        temps = [safe(h, "xTemp") for h in history] if history else [x]
-        mu    = float(np.mean(temps))
-        sigma = float(np.std(temps)) or 1.0
-        z_temp = abs(x - mu) / sigma
-        thermal_score = float(min(z_temp / 3.0, 1.0))
-
-        # ── STA/LTA seismic score ──
+        # ── STA/LTA (always runs — real seismology) ──────────────
         signal_z = np.array([safe(h, "Z Fine Acceleration") for h in history])
         stalta   = stalta_detector.update(signal_z, t)
         ratio    = stalta["stalta_ratio"]
-        # Normalise: ratio > trigger → seismic score > WARN_THRESHOLD
-        seismic_score = float(min(ratio / (STALTA_TRIGGER * 5.0), 1.0))
+        # Only contribute to score when truly triggered (ratio > trigger threshold)
+        # STA/LTA = 1.0 is NORMAL (equal short/long term energy) — not an anomaly
+        # Only flag when ratio significantly EXCEEDS trigger (3.0)
+        if ratio > STALTA_TRIGGER:
+            seismic_score = float(min((ratio - STALTA_TRIGGER) / (STALTA_TRIGGER * 2.0), 1.0))
+        else:
+            seismic_score = 0.0
 
-        # ── Combined score ──
-        score  = round(max(thermal_score, seismic_score), 6)
-        status = "ANOMALY" if score > CRIT_THRESHOLD else \
-                 "WARNING" if score > WARN_THRESHOLD else "NORMAL"
+        # ── Real LSTM reconstruction error ────────────────────────
+        # Thresholds derived from your actual error distribution:
+        #   p95  = 0.000179  (normal operation ceiling)
+        #   p99  = 0.434907  (anomaly boundary)
+        #   warn = mean + 2*std scaled to 0-1
+        # We normalise using: score = raw_error / p99_threshold
+        # so score > 1.0 → genuine anomaly, clipped to 1.0
+        LSTM_WARN_THRESHOLD = 0.00018   # p95 — below this is normal
+        LSTM_CRIT_THRESHOLD = 0.43491   # p99 — above this is anomaly
 
-        # ── Determine dominant cause ──
-        cause = "thermal" if thermal_score >= seismic_score else "seismic"
+        lstm_score = 0.0
+        sensor_errors = {}
+        if _use_real_models and _inference_manager:
+            try:
+                win = _build_window()
+                if win is not None and len(win) >= 128:
+                    res       = _inference_manager.predict("lstm", win)
+                    raw_error = float(res["overall_score"])
+                    # Normalise to 0-1 using p99 as the anomaly boundary
+                    # Errors below p95 → near 0, errors at p99 → ~1.0
+                    if raw_error <= LSTM_WARN_THRESHOLD:
+                        lstm_score = raw_error / LSTM_WARN_THRESHOLD * WARN_THRESHOLD
+                    else:
+                        # Log-scale between warn and crit for smoother response
+                        import math as _math
+                        log_raw  = _math.log(raw_error + 1e-10)
+                        log_warn = _math.log(LSTM_WARN_THRESHOLD + 1e-10)
+                        log_crit = _math.log(LSTM_CRIT_THRESHOLD + 1e-10)
+                        t = (log_raw - log_warn) / (log_crit - log_warn + 1e-10)
+                        lstm_score = float(min(WARN_THRESHOLD + t * (1.0 - WARN_THRESHOLD), 1.0))
+                    sensor_errors = {k: round(float(v), 6) for k, v in res["sensor_errors"].items()}
+                    print(f"[LSTM] raw={raw_error:.6f} → score={lstm_score:.4f}")
+            except Exception as e:
+                print(f"[LSTM] inference error: {e}")
+
+        # ── Fallback: z-score on xTemp ───────────────────────────
+        x  = safe(data, "xTemp")
+        mu = float(np.mean([safe(h, "xTemp") for h in history])) if history else x
+        sigma = float(np.std([safe(h, "xTemp") for h in history])) or 1.0
+        if lstm_score == 0.0:
+            temps  = [safe(h, "xTemp") for h in history] if history else [x]
+            lstm_score = float(min(abs(x - mu) / sigma / 3.0, 1.0))
+
+        # ── Combined score ────────────────────────────────────────
+        # Real model dominates (70%), STA/LTA only adds if genuinely triggered
+        if _use_real_models and lstm_score > 0:
+            score = round(min(0.7 * lstm_score + 0.3 * seismic_score, 1.0), 6)
+        else:
+            score = round(max(lstm_score, seismic_score), 6)
+        status = "ANOMALY" if score > CRIT_THRESHOLD else "WARNING" if score > WARN_THRESHOLD else "NORMAL"
+        cause  = "thermal" if lstm_score >= seismic_score else "seismic"
 
         return {
-            "model":          "LSTM",
-            "score":          score,
-            "status":         status,
-            "z_score":        round(z_temp, 4),
-            "mean_temp":      round(mu, 4),
-            "xTemp":          round(x, 4),
-            "thermal_score":  round(thermal_score, 6),
-            "seismic_score":  round(seismic_score, 6),
-            "stalta_ratio":   ratio,
+            "model":            "LSTM",
+            "score":            score,
+            "status":           status,
+            "lstm_recon_score": round(lstm_score, 6),
+            "z_score":          round(abs(x - mu) / sigma, 4),
+            "mean_temp":        round(mu, 4),
+            "xTemp":            round(x, 4),
+            "seismic_score":    round(seismic_score, 6),
+            "stalta_ratio":     ratio,
             "stalta_triggered": stalta["triggered"],
-            "event_detected": stalta["event_detected"],
-            "dominant_cause": cause,
+            "event_detected":   stalta["event_detected"],
+            "dominant_cause":   cause,
+            "sensor_errors":    sensor_errors,
+            "real_model":       _use_real_models,
         }
 
 
 # ================================================================
-# TRANSFORMER — temperature trend (unchanged, solid)
+# TRANSFORMER — YOUR REAL TransformerAutoencoder
 # ================================================================
 
 class TransformerModel:
+    """
+    Uses your real trained TransformerAutoencoder for reconstruction.
+    Reconstruction error per sensor reveals which channel is anomalous.
+    Also computes linear trend on xTemp for temperature forecasting.
+    """
     def run(self, data: dict) -> dict:
         x_now = safe(data, "xTemp")
         y_now = safe(data, "yTemp")
         z_now = safe(data, "zTemp")
+
+        # ── Linear trend (fast, always available) ────────────────
         if len(history) >= 5:
             xs     = [safe(h, "xTemp") for h in history]
-            t      = np.arange(len(xs), dtype=float)
-            coeffs = np.polyfit(t, xs, 1)
+            t_arr  = np.arange(len(xs), dtype=float)
+            coeffs = np.polyfit(t_arr, xs, 1)
             slope  = float(coeffs[0])
             pred   = float(np.polyval(coeffs, len(xs)))
         else:
-            slope, pred = 0.0, x_now + 0.5
+            slope, pred = 0.0, x_now
+
         trend = "RISING" if slope > 0.01 else "FALLING" if slope < -0.01 else "STABLE"
+
+        # ── Real Transformer reconstruction error ─────────────────
+        # Transformer p95=0.000207, p99=0.001652 from your training data
+        TRANS_WARN_THRESHOLD = 0.000207
+        TRANS_CRIT_THRESHOLD = 0.001652
+        trans_score   = 0.0
+        trans_raw     = 0.0
+        sensor_errors = {}
+        if _use_real_models and _inference_manager:
+            try:
+                win = _build_window()
+                if win is not None and len(win) >= 128:
+                    res      = _inference_manager.predict("transformer", win)
+                    trans_raw = float(res["overall_score"])
+                    sensor_errors = {k: round(float(v), 6) for k, v in res["sensor_errors"].items()}
+                    # Normalise using log-scale
+                    if trans_raw <= TRANS_WARN_THRESHOLD:
+                        trans_score = trans_raw / TRANS_WARN_THRESHOLD * WARN_THRESHOLD
+                    else:
+                        import math as _math
+                        log_raw  = _math.log(trans_raw + 1e-10)
+                        log_warn = _math.log(TRANS_WARN_THRESHOLD + 1e-10)
+                        log_crit = _math.log(TRANS_CRIT_THRESHOLD + 1e-10)
+                        t = (log_raw - log_warn) / (log_crit - log_warn + 1e-10)
+                        trans_score = float(min(WARN_THRESHOLD + t * (1.0 - WARN_THRESHOLD), 1.0))
+                    # Refine temperature prediction using transformer error
+                    if sensor_errors:
+                        xe   = sensor_errors.get("xTemp", 0)
+                        pred = round(x_now + slope - xe * 0.05, 4)
+            except Exception as e:
+                print(f"[TRANS] inference error: {e}")
+
         return {
-            "model":          "Transformer",
-            "pred_xTemp":     round(pred, 4),
-            "current_xTemp":  round(x_now, 4),
-            "current_yTemp":  round(y_now, 4),
-            "current_zTemp":  round(z_now, 4),
-            "slope":          round(slope, 6),
-            "trend":          trend,
+            "model":             "Transformer",
+            "pred_xTemp":        round(pred, 4),
+            "current_xTemp":     round(x_now, 4),
+            "current_yTemp":     round(y_now, 4),
+            "current_zTemp":     round(z_now, 4),
+            "slope":             round(slope, 6),
+            "trend":             trend,
+            "recon_score":       round(trans_score, 6),
+            "sensor_errors":     sensor_errors,
+            "real_model":        _use_real_models,
         }
 
 
 # ================================================================
-# GNN — subsystem graph (upgraded with seismic coupling)
+# GNN — YOUR REAL SpacecraftGNN
 # ================================================================
 
 class GNNModel:
     """
-    Graph-based subsystem health checker.
-    Now also checks seismic-thermal coupling:
-    lunar quakes produce both mechanical AND thermal signatures.
+    Uses your real trained SpacecraftGNN (GCNConv) to compute
+    per-sensor risk scores across the sensor graph.
+    Graph edges defined in core/sensor_graph.py:
+    thermal ↔ thermal, coarse ↔ coarse, fine ↔ fine,
+    plus cross-links: Temp X ↔ Accel coarse X etc.
+    Falls back to rule-based if weights not available.
     """
+    def _build_edge_index(self):
+        """Rebuild edge index matching core/sensor_graph.py."""
+        try:
+            import torch as _torch
+            _sys.path.insert(0, r"G:\Pro_NML")
+            from core.sensor_graph import edge_index as _ei
+            return _ei
+        except Exception:
+            return None
+
     def run(self, data: dict) -> dict:
         x   = safe(data, "xTemp")
         cx  = safe(data, "X Coarse Acceleration")
@@ -397,16 +548,15 @@ class GNNModel:
         f_mag = float(np.sqrt(fx**2 + fy**2 + fz**2))
 
         issues = []
-        if abs(x)   > 50:  issues.append("high_xTemp")
-        if c_mag    > 0.5: issues.append("high_coarse_accel")
-        if f_mag    > 0.2: issues.append("high_fine_accel")
+        if abs(x)  > 50:  issues.append("high_xTemp")
+        if c_mag   > 0.5: issues.append("high_coarse_accel")
+        if f_mag   > 0.2: issues.append("high_fine_accel")
 
-        # Seismic-thermal coupling: simultaneous fine accel + temp deviation
         stalta_active = current_state.get("models", {}).get("lstm", {}).get("stalta_triggered", False)
         seismic_thermal_coupling = stalta_active and abs(x) > 20
-
         cross_anomaly = len(issues) >= 2 or seismic_thermal_coupling
 
+        # ── Default subsystem scores ──────────────────────────────
         subsystem_scores = {
             "thermal":    max(0.0, 1.0 - abs(x) / 100.0),
             "structural": max(0.0, 1.0 - c_mag / 2.0),
@@ -415,15 +565,58 @@ class GNNModel:
             "power":      1.0,
         }
 
+        # ── Real GNN inference ────────────────────────────────────
+        gnn_node_scores = {}
+        graph_risk      = 0.0
+        if _use_real_models and _inference_manager:
+            try:
+                import torch as _torch
+                # Use LSTM sensor errors as node features for GNN
+                lstm_out = current_state.get("models", {}).get("lstm", {})
+                sensor_errs = lstm_out.get("sensor_errors", {})
+                if sensor_errs:
+                    sensor_vec = np.array([sensor_errs.get(c, 0.0) for c in _SENSOR_COLS], dtype=np.float32)
+                    # Normalise
+                    norm = np.linalg.norm(sensor_vec) + 1e-6
+                    sensor_vec = sensor_vec / norm
+                    sensor_vec = sensor_vec - sensor_vec.mean()
+
+                    ei = self._build_edge_index()
+                    if ei is not None:
+                        from models.gnn.model import SpacecraftGNN as _GNN
+                        gnn_model = _inference_manager.models.get("gnn")
+                        if gnn_model is not None:
+                            node_x = _torch.tensor(sensor_vec, dtype=_torch.float32).unsqueeze(-1).to(_inference_manager.device)
+                            ei_dev = ei.to(_inference_manager.device)
+                            with _torch.no_grad():
+                                out = gnn_model(node_x, ei_dev)
+                            scores_np = out.abs().cpu().numpy().flatten()
+                            sensor_names = ["xTemp","zTemp","yTemp","CoarseX","CoarseY","CoarseZ","FineX","FineY","FineZ"]
+                            gnn_node_scores = {sensor_names[i]: round(float(scores_np[i]), 4) for i in range(len(scores_np))}
+                            graph_risk = float(np.tanh(scores_np.mean()))
+
+                            # Update subsystem scores from GNN output
+                            thermal_risk    = np.mean(scores_np[:3])
+                            structural_risk = np.mean(scores_np[3:6])
+                            seismic_risk    = np.mean(scores_np[6:9])
+                            subsystem_scores["thermal"]    = round(max(0.0, 1.0 - float(np.tanh(thermal_risk))), 4)
+                            subsystem_scores["structural"] = round(max(0.0, 1.0 - float(np.tanh(structural_risk))), 4)
+                            subsystem_scores["seismic"]    = round(max(0.0, 1.0 - float(np.tanh(seismic_risk))), 4)
+            except Exception as e:
+                print(f"[GNN] inference error: {e}")
+
         return {
-            "model":               "GNN",
-            "subsystem":           "structure",
-            "issues":              issues,
-            "cross_anomaly":       cross_anomaly,
+            "model":                    "GNN",
+            "subsystem":                "structure",
+            "issues":                   issues,
+            "cross_anomaly":            cross_anomaly,
             "seismic_thermal_coupling": seismic_thermal_coupling,
-            "subsystem_scores":    {k: round(v, 4) for k, v in subsystem_scores.items()},
-            "coarse_rms":          round(c_mag, 6),
-            "fine_rms":            round(f_mag, 6),
+            "subsystem_scores":         {k: round(v, 4) for k, v in subsystem_scores.items()},
+            "gnn_node_scores":          gnn_node_scores,
+            "graph_risk":               round(graph_risk, 4),
+            "coarse_rms":               round(c_mag, 6),
+            "fine_rms":                 round(f_mag, 6),
+            "real_model":               _use_real_models and bool(gnn_node_scores),
         }
 
 
@@ -434,7 +627,6 @@ lstm        = LSTMModel()
 cnn         = CNNSeismicClassifier()
 transformer = TransformerModel()
 gnn         = GNNModel()
-
 
 # ================================================================
 # MODEL ROUTER
@@ -458,30 +650,59 @@ def model_name(question: str) -> str:
 # LLM (Ollama llama3)
 # ================================================================
 def explain(model_result: dict, question: str, sensors: dict) -> str:
+    m      = current_state.get("models", {})
+    lstm_m = m.get("lstm", {})
+    cnn_m  = m.get("cnn",  {})
+    trans_m= m.get("transformer", {})
+    gnn_m  = m.get("gnn",  {})
+
+    # Build rich context so llama3 can answer without needing to think too hard
     prompt = f"""You are an expert spacecraft mission AI analyst for Chandrayaan-3 ILSA seismometer data.
+Be concise — answer in 3-5 sentences maximum. Use the data provided.
 
-Current sensor readings:
-- xTemp: {safe(sensors, 'xTemp'):.4f}  yTemp: {safe(sensors, 'yTemp'):.4f}  zTemp: {safe(sensors, 'zTemp'):.4f}
-- X Fine Accel: {safe(sensors, 'X Fine Acceleration'):.6f}
-- Y Fine Accel: {safe(sensors, 'Y Fine Acceleration'):.6f}
-- Z Fine Accel: {safe(sensors, 'Z Fine Acceleration'):.6f}
-- X Coarse Accel: {safe(sensors, 'X Coarse Acceleration'):.6f}
-- Y Coarse Accel: {safe(sensors, 'Y Coarse Acceleration'):.6f}
-- Z Coarse Accel: {safe(sensors, 'Z Coarse Acceleration'):.6f}
+LIVE SENSOR READINGS:
+- xTemp={safe(sensors,'xTemp'):.4f}°C  yTemp={safe(sensors,'yTemp'):.4f}°C  zTemp={safe(sensors,'zTemp'):.4f}°C
+- Fine Accel X={safe(sensors,'X Fine Acceleration'):.6f}  Y={safe(sensors,'Y Fine Acceleration'):.6f}  Z={safe(sensors,'Z Fine Acceleration'):.6f}
+- Coarse Accel X={safe(sensors,'X Coarse Acceleration'):.6f}  Y={safe(sensors,'Y Coarse Acceleration'):.6f}  Z={safe(sensors,'Z Coarse Acceleration'):.6f}
 
-AI Model: {model_result.get('model')}
-Model output: {model_result}
-Question: {question}
+MODEL OUTPUTS:
+- LSTM (real PyTorch): score={lstm_m.get('score',0):.4f} status={lstm_m.get('status','?')} cause={lstm_m.get('dominant_cause','?')} real_model={lstm_m.get('real_model',False)}
+- CNN: event_type={cnn_m.get('event_type','?')} severity={cnn_m.get('severity','?')} freq={cnn_m.get('freq_dominant',0):.3f}Hz
+- Transformer: trend={trans_m.get('trend','?')} pred_xTemp={trans_m.get('pred_xTemp',0):.4f} slope={trans_m.get('slope',0):.6f}
+- GNN: graph_risk={gnn_m.get('graph_risk',0):.4f} coupling={gnn_m.get('seismic_thermal_coupling',False)} subsystems={gnn_m.get('subsystem_scores',{})}
+- STA/LTA ratio={lstm_m.get('stalta_ratio',0):.4f} triggered={lstm_m.get('stalta_triggered',False)}
 
-Provide a concise 3-5 sentence technical answer. Reference specific values.
-For seismic events, mention STA/LTA ratio, event type classification, and lunar quake context.
+THRESHOLDS: warn>0.05 crit>0.20  |  STA/LTA trigger=3.0
+
+QUESTION: {question}
+
+Answer concisely using the data above. If asked about future anomalies, use the trend and slope data.
+If asked about current status, state the score and what it means.
+Do not say you cannot predict — use the Transformer slope and score trajectory to give a best estimate.
 """
     try:
         r = requests.post("http://localhost:11434/api/generate",
-                          json={"model": "llama3", "prompt": prompt, "stream": False}, timeout=30)
-        return r.json().get("response", "No response.")
+                          json={"model": "llama3", "prompt": prompt, "stream": False}, timeout=90)
+        resp = r.json().get("response", "")
+        if resp:
+            return resp
+        return "Ollama returned empty response. Try asking again."
     except requests.exceptions.ConnectionError:
-        return "[ERROR] Ollama not running. Start with: ollama serve"
+        # Fallback: answer directly from data without Ollama
+        score  = lstm_m.get("score", 0)
+        trend  = trans_m.get("trend", "STABLE")
+        slope  = trans_m.get("slope", 0)
+        status = lstm_m.get("status", "NORMAL")
+        q      = question.lower()
+        if any(w in q for w in ["future","anomaly","predict","forecast","will"]):
+            return (f"Based on current data — LSTM score is {score:.4f} ({status}). "
+                    f"Temperature trend is {trend} (slope={slope:.6f}). "
+                    f"{'Score is rising — anomaly likely if trend continues.' if slope > 0.01 else 'Score and temperature are stable — no anomaly expected in the near future.' if score < 0.03 else 'Monitor closely — score is elevated.'}")
+        elif any(w in q for w in ["status","health","now","current"]):
+            return (f"Current mission status: {status}. Anomaly score: {score:.4f}. "
+                    f"CNN detected: {cnn_m.get('event_type','normal')}. Temperature: {safe(sensors,'xTemp'):.2f}°C ({trend}). "
+                    f"STA/LTA ratio: {lstm_m.get('stalta_ratio',0):.3f} ({'TRIGGERED' if lstm_m.get('stalta_triggered') else 'idle'}).")
+        return f"[Ollama unavailable] Current score: {score:.4f} ({status}). Trend: {trend}."
     except Exception as e:
         return f"[ERROR] {e}"
 
@@ -706,6 +927,11 @@ async def telemetry_loop():
     while True:
         packet = next_packet()
         history.append(packet)
+
+        # Count valid packets for model readiness indicator
+        valid_count = sum(1 for h in history if _is_valid_packet(h))
+        current_state["valid_packets"] = valid_count
+        current_state["model_ready"]   = valid_count >= 128
 
         lstm_out  = lstm.run(packet)
         cnn_out   = cnn.run(packet)

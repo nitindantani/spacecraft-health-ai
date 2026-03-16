@@ -1,1349 +1,844 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>ILSA Mission AI</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&family=DM+Mono:wght@300;400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
-/* ─── TOKENS ─────────────────────────────────────────────────── */
-:root {
-  --void:   #07090d;
-  --ink:    #0d1117;
-  --surface:#131920;
-  --rim:    rgba(255,255,255,0.06);
-  --rim2:   rgba(255,255,255,0.10);
-  --glow:   #00e5ff;
-  --glow2:  #00ff9d;
-  --warn:   #ffb800;
-  --crit:   #ff3c5a;
-  --muted:  #3a4a5a;
-  --sub:    #6b7f93;
-  --body:   #b8ccd8;
-  --white:  #e8f4f8;
-  --r:      12px;
-  --r2:     20px;
+/* ── THEME TOKENS ── */
+:root { --glow:#00e5ff;--glow2:#00ff9d;--warn:#ffb800;--crit:#ff3c5a;--purple:#bb77ff;--r:10px;--r2:18px;--sb-w:276px; }
+[data-theme="dark"] {
+  --bg:#07090d;--ink:#0d1117;--surface:#131920;--surface2:#1a2330;
+  --rim:rgba(255,255,255,.07);--rim2:rgba(255,255,255,.12);
+  --body:#b8ccd8;--sub:#5a7080;--muted:#2e404e;--white:#e8f4f8;
+  --shadow:0 2px 16px rgba(0,0,0,.5);--sb-bg:#0a0f15;--chat-bg:#07090d;
+  --bubble-ai:#111820;--bubble-user:#1a2330;--input-bg:#131920;--scr:rgba(255,255,255,.08);
 }
+[data-theme="light"] {
+  --bg:#f0f4f8;--ink:#ffffff;--surface:#f8fafc;--surface2:#eef2f7;
+  --rim:rgba(0,0,0,.08);--rim2:rgba(0,0,0,.14);
+  --body:#374151;--sub:#6b7280;--muted:#d1d5db;--white:#111827;
+  --shadow:0 2px 16px rgba(0,0,0,.08);--sb-bg:#ffffff;--chat-bg:#f0f4f8;
+  --bubble-ai:#ffffff;--bubble-user:#e8f0fe;--input-bg:#ffffff;--scr:rgba(0,0,0,.1);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--body);font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.6;display:flex;flex-direction:column;transition:background .25s,color .25s;}
+[data-theme="dark"] body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.03) 3px,rgba(0,0,0,.03) 4px);}
 
-/* ─── RESET ──────────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; overflow: hidden; }
-body {
-  background: var(--void);
-  color: var(--body);
-  font-family: 'DM Sans', sans-serif;
-  font-size: 14px;
-  line-height: 1.6;
-  display: flex;
-  flex-direction: column;
-}
+/* ── TOP BAR ── */
+#topbar{flex-shrink:0;height:52px;background:var(--ink);border-bottom:1px solid var(--rim2);display:flex;align-items:center;padding:0 16px;gap:0;position:relative;z-index:200;box-shadow:var(--shadow);transition:background .25s;}
+.tb-brand{display:flex;align-items:center;gap:9px;margin-right:18px;}
+.tb-logo{width:28px;height:28px;border-radius:7px;border:1.5px solid var(--glow);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:9px;font-weight:800;color:var(--glow);box-shadow:0 0 10px rgba(0,229,255,.18);flex-shrink:0;}
+.tb-name{font-family:'Syne',sans-serif;font-size:13px;font-weight:800;color:var(--white);}
+.tb-tagline{font-family:'DM Mono',monospace;font-size:7.5px;color:var(--sub);letter-spacing:2px;}
+.tb-div{width:1px;height:22px;background:var(--rim2);margin:0 13px;flex-shrink:0;}
+.tb-metric{display:flex;flex-direction:column;gap:1px;flex-shrink:0;}
+.tb-lbl{font-family:'DM Mono',monospace;font-size:7px;color:var(--sub);letter-spacing:2px;}
+.tb-val{font-family:'DM Mono',monospace;font-size:12px;font-weight:500;color:var(--glow2);transition:color .4s;}
+.tb-val.warn{color:var(--warn)}.tb-val.crit{color:var(--crit);animation:blink .4s ease-in-out infinite;}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:11px;}
+.theme-toggle{display:flex;align-items:center;background:var(--surface);border:1px solid var(--rim2);border-radius:20px;padding:2px;cursor:pointer;}
+.th-opt{padding:3px 9px;border-radius:16px;font-family:'DM Mono',monospace;font-size:9px;color:var(--sub);transition:all .2s;user-select:none;}
+.th-opt.active{background:var(--surface2);color:var(--white);}
+.alert-bell{position:relative;width:32px;height:32px;border-radius:50%;background:var(--surface);border:1px solid var(--rim2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:var(--sub);transition:all .2s;}
+.alert-bell:hover{border-color:rgba(255,184,0,.4);color:var(--warn);}
+.alert-bell.ring{color:var(--warn);border-color:rgba(255,184,0,.4);animation:ring .6s ease-in-out 3;}
+.ab-cnt{position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;background:var(--crit);color:#fff;font-family:'DM Mono',monospace;font-size:8px;display:none;align-items:center;justify-content:center;}
+.status-badge{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;padding:3px 10px;border-radius:20px;background:rgba(0,255,157,.1);color:var(--glow2);border:1px solid rgba(0,255,157,.25);transition:all .4s;}
+.status-badge.warn{background:rgba(255,184,0,.12);color:var(--warn);border-color:rgba(255,184,0,.3);}
+.status-badge.crit{background:rgba(255,60,90,.12);color:var(--crit);border-color:rgba(255,60,90,.3);animation:blink .4s ease-in-out infinite;}
+.ws-dot{width:7px;height:7px;border-radius:50%;background:var(--crit);animation:blink .9s infinite;flex-shrink:0;}
+.ws-dot.live{background:var(--glow2);animation:pulse 2.2s infinite;}
+.tb-clk{font-family:'DM Mono',monospace;font-size:11px;color:var(--sub);letter-spacing:1.5px;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,255,157,.4)}50%{opacity:.7;box-shadow:0 0 0 4px transparent}}
+@keyframes ring{0%,100%{transform:rotate(0)}25%{transform:rotate(-18deg)}75%{transform:rotate(18deg)}}
 
-/* ─── SCANLINE OVERLAY ───────────────────────────────────────── */
-body::after {
-  content: '';
-  position: fixed; inset: 0; pointer-events: none; z-index: 9999;
-  background: repeating-linear-gradient(0deg,
-    transparent, transparent 3px,
-    rgba(0,0,0,0.04) 3px, rgba(0,0,0,0.04) 4px);
-}
+/* ── LAYOUT ── */
+#layout{flex:1;display:flex;overflow:hidden;}
 
-/* ─── TOP BAR ────────────────────────────────────────────────── */
-#topbar {
-  flex-shrink: 0;
-  height: 52px;
-  background: var(--ink);
-  border-bottom: 1px solid var(--rim);
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  gap: 0;
-  position: relative;
-  z-index: 100;
-}
-.tb-brand {
-  display: flex; align-items: center; gap: 10px;
-  margin-right: 28px;
-}
-.tb-logo {
-  width: 28px; height: 28px;
-  border: 1.5px solid var(--glow);
-  border-radius: 6px;
-  display: flex; align-items: center; justify-content: center;
-  font-family: 'Syne', sans-serif;
-  font-size: 10px; font-weight: 800;
-  color: var(--glow);
-  letter-spacing: 1px;
-  box-shadow: 0 0 12px rgba(0,229,255,0.2);
-  flex-shrink: 0;
-}
-.tb-name {
-  font-family: 'Syne', sans-serif;
-  font-size: 13px; font-weight: 700;
-  color: var(--white);
-  letter-spacing: 0.5px;
-}
-.tb-sub {
-  font-family: 'DM Mono', monospace;
-  font-size: 9px; color: var(--muted);
-  letter-spacing: 2px;
-  line-height: 1.2;
-}
-.tb-divider {
-  width: 1px; height: 24px;
-  background: var(--rim2);
-  margin: 0 20px;
-  flex-shrink: 0;
-}
-.tb-metric {
-  display: flex; flex-direction: column; gap: 1px;
-  flex-shrink: 0;
-}
-.tb-label {
-  font-family: 'DM Mono', monospace;
-  font-size: 8px; color: var(--muted);
-  letter-spacing: 2px; text-transform: uppercase;
-}
-.tb-value {
-  font-family: 'DM Mono', monospace;
-  font-size: 13px; font-weight: 500;
-  color: var(--glow2);
-  transition: color .4s;
-}
-.tb-value.warn { color: var(--warn); }
-.tb-value.crit { color: var(--crit); }
-.tb-right {
-  margin-left: auto;
-  display: flex; align-items: center; gap: 16px;
-}
-.ws-dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--crit);
-  animation: blink .9s ease-in-out infinite;
-  flex-shrink: 0;
-}
-.ws-dot.live { background: var(--glow2); animation: pulse 2.2s ease-in-out infinite; }
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.15} }
-@keyframes pulse { 0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,255,157,.4)} 50%{opacity:.7;box-shadow:0 0 0 5px transparent} }
-.tb-clock {
-  font-family: 'DM Mono', monospace;
-  font-size: 12px; color: var(--sub);
-  letter-spacing: 1.5px;
-}
-.tb-status-badge {
-  font-family: 'DM Mono', monospace;
-  font-size: 9px; letter-spacing: 2px;
-  padding: 3px 9px; border-radius: 4px;
-  font-weight: 500;
-  background: rgba(0,255,157,.1); color: var(--glow2); border: 1px solid rgba(0,255,157,.25);
-  transition: all .4s;
-}
-.tb-status-badge.warn { background: rgba(255,184,0,.1); color: var(--warn); border-color: rgba(255,184,0,.3); }
-.tb-status-badge.crit { background: rgba(255,60,90,.1); color: var(--crit); border-color: rgba(255,60,90,.3); animation: blink .5s ease-in-out infinite; }
+/* ── SIDEBAR ── */
+#sidebar{width:var(--sb-w);background:var(--sb-bg);border-right:1px solid var(--rim2);display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;flex-shrink:0;scrollbar-width:thin;scrollbar-color:var(--scr) transparent;transition:background .25s;}
+#sidebar::-webkit-scrollbar{width:3px;}
+#sidebar::-webkit-scrollbar-thumb{background:var(--scr);border-radius:2px;}
+.sb-sec{padding:11px 13px;border-bottom:1px solid var(--rim);}
+.sb-ttl{font-family:'DM Mono',monospace;font-size:7.5px;letter-spacing:3px;color:var(--sub);text-transform:uppercase;margin-bottom:9px;display:flex;align-items:center;justify-content:space-between;}
+.sb-ttl b{color:var(--glow);font-weight:500;}
 
-/* ─── CHAT AREA ──────────────────────────────────────────────── */
-#chat {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px 0 8px;
-  scroll-behavior: smooth;
-  scrollbar-width: thin;
-  scrollbar-color: var(--rim2) transparent;
-}
-#chat::-webkit-scrollbar { width: 4px; }
-#chat::-webkit-scrollbar-thumb { background: var(--rim2); border-radius: 2px; }
+/* Ring */
+.ring-wrap{display:flex;align-items:center;gap:11px;margin-bottom:9px;}
+.ring-svg{width:54px;height:54px;flex-shrink:0;}
+.ring-bg{fill:none;stroke:var(--rim2);stroke-width:7;}
+.ring-fg{fill:none;stroke-width:7;stroke-linecap:round;stroke-dasharray:145;transition:stroke-dashoffset .9s ease,stroke .5s;}
+.ring-n{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;line-height:1;color:var(--glow2);}
+.ring-s{font-family:'DM Mono',monospace;font-size:8px;color:var(--sub);letter-spacing:1px;margin-top:2px;}
+.spark-h{height:38px;position:relative;}
 
-.msg-row {
-  display: flex;
-  padding: 6px 24px;
-  gap: 12px;
-  animation: msgIn .3s cubic-bezier(.2,.8,.3,1) both;
-}
-@keyframes msgIn {
-  from { opacity:0; transform:translateY(10px); }
-  to   { opacity:1; transform:none; }
-}
-.msg-row.user { flex-direction: row-reverse; }
+/* Mini charts */
+.chart-mini{height:64px;position:relative;margin-bottom:3px;}
+.chart-leg{display:flex;gap:8px;flex-wrap:wrap;}
+.chart-leg span{font-family:'DM Mono',monospace;font-size:7.5px;}
 
-/* ── Avatar ── */
-.avatar {
-  width: 32px; height: 32px; border-radius: 50%;
-  flex-shrink: 0; margin-top: 2px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 12px; font-weight: 600;
-}
-.avatar.ai {
-  background: linear-gradient(135deg, #001a22, #002a35);
-  border: 1.5px solid rgba(0,229,255,.3);
-  color: var(--glow);
-  font-family: 'Syne', sans-serif;
-  font-size: 9px; letter-spacing: 1px;
-}
-.avatar.user {
-  background: linear-gradient(135deg, #1a1a2e, #16213e);
-  border: 1.5px solid var(--rim2);
-  color: var(--sub);
-  font-family: 'DM Sans', sans-serif;
-}
+/* Model cards */
+.m-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+.mcard{background:var(--surface);border:1px solid var(--rim);border-radius:var(--r);padding:7px 8px;transition:border-color .3s;}
+.mcard.flash{animation:mf .5s ease;}
+@keyframes mf{0%{background:rgba(0,229,255,.1)}100%{background:var(--surface)}}
+.mc-name{font-family:'DM Mono',monospace;font-size:7.5px;font-weight:500;letter-spacing:1px;margin-bottom:3px;}
+.mc-val{font-family:'DM Mono',monospace;font-size:9.5px;color:var(--body);line-height:1.4;}
+.mc-bdg{display:inline-block;font-family:'DM Mono',monospace;font-size:7px;padding:1px 5px;border-radius:3px;margin-top:3px;letter-spacing:1px;}
+.bn{background:rgba(0,255,157,.1);color:var(--glow2);}
+.bw{background:rgba(255,184,0,.12);color:var(--warn);}
+.bc{background:rgba(255,60,90,.12);color:var(--crit);}
+.bp{background:rgba(187,119,255,.12);color:var(--purple);}
 
-/* ── Bubbles ── */
-.bubble-wrap { max-width: 680px; display: flex; flex-direction: column; gap: 4px; }
-.msg-row.user .bubble-wrap { align-items: flex-end; }
+/* Health bars */
+.hb-row{display:flex;flex-direction:column;gap:5px;}
+.hb-item{display:grid;grid-template-columns:62px 1fr 28px;gap:5px;align-items:center;}
+.hb-lbl{font-family:'DM Mono',monospace;font-size:7.5px;color:var(--sub);}
+.hb-track{height:4px;background:var(--rim2);border-radius:2px;overflow:hidden;}
+.hb-fill{height:100%;border-radius:2px;transition:width .8s ease;}
+.hg{background:linear-gradient(to right,#00cc77,var(--glow2));}
+.ha{background:linear-gradient(to right,#cc8800,var(--warn));}
+.hr2{background:linear-gradient(to right,#cc1133,var(--crit));}
+.hb-pct{font-family:'DM Mono',monospace;font-size:7.5px;text-align:right;}
 
-.bubble {
-  border-radius: var(--r2);
-  padding: 12px 16px;
-  font-size: 14px; line-height: 1.65;
-  position: relative;
-}
+/* Stats */
+.stat-g{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+.stat-item{background:var(--surface);border:1px solid var(--rim);border-radius:var(--r);padding:7px 8px;text-align:center;}
+.stat-lbl{font-family:'DM Mono',monospace;font-size:7px;color:var(--sub);letter-spacing:1px;margin-bottom:2px;}
+.stat-val{font-family:'DM Mono',monospace;font-size:15px;font-weight:500;color:var(--glow2);}
 
-/* User bubble — dark glass */
-.bubble.user {
-  background: var(--surface);
-  border: 1px solid var(--rim2);
-  color: var(--white);
-  border-bottom-right-radius: 5px;
-}
+/* ── CHAT PANEL ── */
+#chatpanel{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--chat-bg);transition:background .25s;}
+#chat{flex:1;overflow-y:auto;padding:18px 0 8px;scroll-behavior:smooth;scrollbar-width:thin;scrollbar-color:var(--scr) transparent;}
+#chat::-webkit-scrollbar{width:3px;}
+#chat::-webkit-scrollbar-thumb{background:var(--scr);border-radius:2px;}
 
-/* AI bubble — near white, humanise-style */
-.bubble.ai {
-  background: #1a2530;
-  border: 1px solid var(--rim);
-  color: var(--body);
-  border-bottom-left-radius: 5px;
-  max-width: 100%;
-}
-.bubble.ai strong { color: var(--white); }
-.bubble.ai code {
-  font-family: 'DM Mono', monospace;
-  font-size: 12px;
-  background: rgba(0,229,255,.07);
-  border: 1px solid rgba(0,229,255,.15);
-  padding: 1px 6px; border-radius: 4px;
-  color: var(--glow);
-}
+/* Messages */
+.msg-row{display:flex;padding:5px 18px;gap:10px;animation:mi .28s cubic-bezier(.2,.8,.3,1) both;}
+@keyframes mi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.msg-row.user{flex-direction:row-reverse;}
+.avatar{width:30px;height:30px;border-radius:50%;flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;}
+.avatar.ai{background:linear-gradient(135deg,#001a22,#002a35);border:1.5px solid rgba(0,229,255,.25);color:var(--glow);font-family:'Syne',sans-serif;font-size:8px;letter-spacing:1px;}
+.avatar.user{background:var(--surface2);border:1.5px solid var(--rim2);color:var(--sub);}
+.bwrap{max-width:620px;display:flex;flex-direction:column;gap:3px;}
+.msg-row.user .bwrap{align-items:flex-end;}
+.bubble{border-radius:var(--r2);padding:11px 15px;font-size:13.5px;line-height:1.65;transition:background .25s;}
+.bubble.ai{background:var(--bubble-ai);border:1px solid var(--rim);color:var(--body);border-bottom-left-radius:4px;}
+.bubble.user{background:var(--bubble-user);border:1px solid var(--rim2);color:var(--white);border-bottom-right-radius:4px;}
+.bubble.ai code{font-family:'DM Mono',monospace;font-size:11.5px;background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.15);padding:1px 6px;border-radius:4px;color:var(--glow);}
+.bubble.ai strong{color:var(--white);}
+/* Alert bubbles */
+.bubble.acrit{background:rgba(255,60,90,.1);border:1px solid rgba(255,60,90,.3);color:var(--white);animation:ap .4s cubic-bezier(.2,.8,.3,1) both;}
+.bubble.awarn{background:rgba(255,184,0,.09);border:1px solid rgba(255,184,0,.28);color:var(--white);animation:ap .4s ease both;}
+.bubble.aok{background:rgba(0,255,157,.08);border:1px solid rgba(0,255,157,.22);color:var(--white);animation:ap .4s ease both;}
+@keyframes ap{from{opacity:0;transform:scale(.95) translateY(6px)}to{opacity:1;transform:none}}
+/* Typing */
+.bubble.typing{background:var(--surface);border:1px solid var(--rim);padding:12px 15px;display:flex;align-items:center;gap:5px;}
+.td{width:5px;height:5px;border-radius:50%;background:var(--sub);animation:td 1.3s ease-in-out infinite;}
+.td:nth-child(2){animation-delay:.2s}.td:nth-child(3){animation-delay:.4s}
+@keyframes td{0%,80%,100%{transform:scale(1);opacity:.4}40%{transform:scale(1.3);opacity:1}}
+/* Chart bubble */
+.bubble.cb{background:var(--ink);border:1px solid var(--rim2);padding:14px;width:min(600px,100%);}
+.cb-title{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:2.5px;color:var(--sub);margin-bottom:9px;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between;}
+.cb-title em{color:var(--glow);font-style:normal;}
+.ch-wrap{position:relative;height:148px;}
+.ch-wrap.tall{height:195px;}
+/* Card bubble */
+.bubble.cardb{background:var(--ink);border:1px solid var(--rim2);padding:15px 17px;width:min(460px,100%);}
+.card-g{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:9px;}
+.kv{background:var(--surface);border:1px solid var(--rim);border-radius:var(--r);padding:8px 10px;}
+.kv-l{font-family:'DM Mono',monospace;font-size:7.5px;color:var(--sub);letter-spacing:2px;margin-bottom:3px;}
+.kv-v{font-family:'DM Mono',monospace;font-size:14px;font-weight:500;}
+.ev-list{display:flex;flex-direction:column;gap:5px;margin-top:8px;}
+.ev-item{background:var(--surface);border:1px solid var(--rim);border-radius:var(--r);padding:8px 10px;font-family:'DM Mono',monospace;font-size:11px;line-height:1.5;}
+.mts{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);padding:0 4px;}
+.msg-row.user .mts{text-align:right;}
+hr.bhr{border:none;border-top:1px solid var(--rim);margin:8px 0;}
 
-/* ── Typing indicator ── */
-.bubble.typing {
-  background: var(--surface);
-  border: 1px solid var(--rim);
-  padding: 14px 18px;
-  display: flex; align-items: center; gap: 5px;
-}
-.typing-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--sub);
-  animation: tdot 1.3s ease-in-out infinite;
-}
-.typing-dot:nth-child(2) { animation-delay: .2s; }
-.typing-dot:nth-child(3) { animation-delay: .4s; }
-@keyframes tdot { 0%,80%,100%{transform:scale(1);opacity:.4} 40%{transform:scale(1.3);opacity:1} }
+/* ── INPUT BAR ── */
+#inputbar{flex-shrink:0;background:var(--ink);border-top:1px solid var(--rim2);padding:11px 16px 15px;transition:background .25s;}
+.sugs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;}
+.sug{font-family:'DM Mono',monospace;font-size:10px;color:var(--sub);background:var(--surface);border:1px solid var(--rim);border-radius:20px;padding:3px 10px;cursor:pointer;transition:all .2s;white-space:nowrap;user-select:none;}
+.sug:hover{color:var(--glow);border-color:rgba(0,229,255,.3);background:rgba(0,229,255,.05);}
+.input-row{display:flex;align-items:flex-end;gap:8px;}
+#msgInput{flex:1;background:var(--input-bg);border:1px solid var(--rim2);border-radius:var(--r2);color:var(--white);font-family:'DM Sans',sans-serif;font-size:13.5px;padding:10px 15px;outline:none;resize:none;min-height:43px;max-height:125px;overflow-y:auto;line-height:1.5;scrollbar-width:none;transition:border-color .2s,box-shadow .2s;}
+#msgInput::-webkit-scrollbar{display:none;}
+#msgInput:focus{border-color:rgba(0,229,255,.4);box-shadow:0 0 0 3px rgba(0,229,255,.06);}
+#msgInput::placeholder{color:var(--sub);}
+#imgBtn{width:36px;height:36px;border-radius:50%;background:transparent;border:1px solid var(--rim2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--sub);transition:all .2s;}
+#imgBtn:hover{border-color:rgba(0,229,255,.3);color:var(--glow);}
+#sendBtn{width:44px;height:44px;border-radius:50%;background:var(--glow);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 14px rgba(0,229,255,.22);transition:all .2s;}
+#sendBtn:hover{background:#33eeff;box-shadow:0 0 22px rgba(0,229,255,.4);transform:scale(1.06);}
+#sendBtn:active{transform:scale(.95);}
+#sendBtn:disabled{background:var(--sub);box-shadow:none;cursor:not-allowed;}
+.hint{margin-top:5px;font-family:'DM Mono',monospace;font-size:8.5px;color:var(--muted);text-align:center;letter-spacing:1px;}
 
-/* ── Chart bubble ── */
-.bubble.chart-bubble {
-  background: var(--ink);
-  border: 1px solid var(--rim2);
-  padding: 16px;
-  width: min(680px, 100%);
-}
-.chart-title {
-  font-family: 'DM Mono', monospace;
-  font-size: 9px; letter-spacing: 3px; text-transform: uppercase;
-  color: var(--sub); margin-bottom: 12px;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.chart-title span { color: var(--glow); }
-.chart-wrap { position: relative; height: 160px; }
-.chart-wrap.tall { height: 200px; }
+/* ── WELCOME ── */
+#welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;padding:32px 18px;}
+#welcome.hidden{display:none;}
+.wc-icon{width:50px;height:50px;border-radius:13px;background:linear-gradient(135deg,#001a22,#002535);border:1.5px solid rgba(0,229,255,.3);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:10px;font-weight:800;color:var(--glow);box-shadow:0 0 24px rgba(0,229,255,.1);margin-bottom:3px;}
+.wc-title{font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--white);}
+.wc-sub{font-size:13px;color:var(--sub);text-align:center;max-width:320px;line-height:1.6;}
+.wc-chips{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-top:7px;}
+.wc-chip{font-family:'DM Mono',monospace;font-size:10px;color:var(--body);background:var(--surface);border:1px solid var(--rim2);border-radius:20px;padding:6px 13px;cursor:pointer;transition:all .2s;}
+.wc-chip:hover{color:var(--glow);border-color:rgba(0,229,255,.35);transform:translateY(-1px);}
 
-/* ── Card bubble (mission summary) ── */
-.bubble.card-bubble {
-  background: var(--ink);
-  border: 1px solid var(--rim2);
-  padding: 18px 20px;
-  width: min(520px, 100%);
-}
-.card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
-.card-kv {
-  background: var(--surface);
-  border: 1px solid var(--rim);
-  border-radius: var(--r);
-  padding: 10px 12px;
-}
-.card-kv-l { font-family: 'DM Mono', monospace; font-size: 8px; color: var(--muted); letter-spacing: 2px; margin-bottom: 4px; }
-.card-kv-v { font-family: 'DM Mono', monospace; font-size: 16px; font-weight: 500; }
-
-/* ── Event log bubble ── */
-.ev-bubble-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
-.ev-item {
-  background: var(--surface);
-  border: 1px solid var(--rim);
-  border-radius: var(--r);
-  padding: 9px 12px;
-  font-family: 'DM Mono', monospace;
-  font-size: 11px; line-height: 1.5;
-}
-.ev-item-type { font-weight: 500; letter-spacing: 1px; }
-
-/* ── Image analysis bubble ── */
-.img-analysis-bubble { padding: 0; overflow: hidden; }
-.img-preview-row {
-  display: flex; gap: 12px; padding: 16px;
-  border-bottom: 1px solid var(--rim);
-}
-.img-thumb {
-  width: 100px; height: 70px; border-radius: 8px;
-  object-fit: cover; border: 1px solid var(--rim2);
-  flex-shrink: 0;
-}
-.img-meta { display: flex; flex-direction: column; gap: 4px; }
-.img-meta-label { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--sub); letter-spacing: 2px; }
-.img-meta-val { font-size: 13px; color: var(--white); }
-.img-analysis-text { padding: 14px 16px; font-size: 13px; line-height: 1.7; }
-.img-section { margin-bottom: 10px; }
-.img-section-hd { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 2px; margin-bottom: 3px; font-weight: 500; }
-
-/* ── Timestamp ── */
-.msg-ts {
-  font-family: 'DM Mono', monospace;
-  font-size: 9px; color: var(--muted);
-  padding: 0 4px;
-}
-.msg-row.user .msg-ts { text-align: right; }
-
-/* ─── INPUT BAR ──────────────────────────────────────────────── */
-#inputbar {
-  flex-shrink: 0;
-  background: var(--ink);
-  border-top: 1px solid var(--rim);
-  padding: 14px 20px 18px;
-}
-.input-wrap {
-  max-width: 760px;
-  margin: 0 auto;
-  position: relative;
-}
-/* Suggestions row */
-.suggestions {
-  display: flex; gap: 6px; flex-wrap: wrap;
-  margin-bottom: 10px;
-}
-.sug {
-  font-family: 'DM Mono', monospace;
-  font-size: 10px; color: var(--sub);
-  background: var(--surface);
-  border: 1px solid var(--rim);
-  border-radius: 20px;
-  padding: 4px 12px;
-  cursor: pointer;
-  transition: all .2s;
-  white-space: nowrap;
-  user-select: none;
-}
-.sug:hover {
-  color: var(--glow);
-  border-color: rgba(0,229,255,.3);
-  background: rgba(0,229,255,.05);
-}
-/* Input field */
-.input-field-row {
-  display: flex; align-items: flex-end; gap: 10px;
-}
-#msgInput {
-  flex: 1;
-  background: var(--surface);
-  border: 1px solid var(--rim2);
-  border-radius: var(--r2);
-  color: var(--white);
-  font-family: 'DM Sans', sans-serif;
-  font-size: 14px;
-  padding: 12px 18px;
-  outline: none;
-  resize: none;
-  min-height: 48px; max-height: 140px;
-  overflow-y: auto;
-  line-height: 1.5;
-  transition: border-color .2s, box-shadow .2s;
-  scrollbar-width: none;
-}
-#msgInput::-webkit-scrollbar { display: none; }
-#msgInput:focus {
-  border-color: rgba(0,229,255,.4);
-  box-shadow: 0 0 0 3px rgba(0,229,255,.06);
-}
-#msgInput::placeholder { color: var(--muted); }
-/* Send button */
-#sendBtn {
-  width: 48px; height: 48px; border-radius: 50%;
-  background: var(--glow);
-  border: none; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  transition: all .2s;
-  box-shadow: 0 0 16px rgba(0,229,255,.25);
-}
-#sendBtn:hover { background: #33eeff; box-shadow: 0 0 24px rgba(0,229,255,.45); transform: scale(1.06); }
-#sendBtn:active { transform: scale(.96); }
-#sendBtn:disabled { background: var(--muted); box-shadow: none; cursor: not-allowed; }
-#sendBtn svg { width: 18px; height: 18px; }
-/* Image upload button */
-#imgBtn {
-  width: 38px; height: 38px; border-radius: 50%;
-  background: transparent;
-  border: 1px solid var(--rim2); cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; color: var(--sub);
-  transition: all .2s;
-}
-#imgBtn:hover { border-color: rgba(0,229,255,.3); color: var(--glow); }
-#fileInput { display: none; }
-/* Input hint */
-.input-hint {
-  margin-top: 7px;
-  font-family: 'DM Mono', monospace;
-  font-size: 9px; color: var(--muted);
-  text-align: center; letter-spacing: 1px;
-}
-
-/* ─── WELCOME STATE ──────────────────────────────────────────── */
-#welcome {
-  flex: 1; display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: 12px; padding: 40px 20px;
-  pointer-events: none;
-}
-#welcome.hidden { display: none; }
-.wc-icon {
-  width: 56px; height: 56px; border-radius: 16px;
-  background: linear-gradient(135deg, #001a22, #002535);
-  border: 1.5px solid rgba(0,229,255,.3);
-  display: flex; align-items: center; justify-content: center;
-  font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 800;
-  color: var(--glow); letter-spacing: 1px;
-  box-shadow: 0 0 30px rgba(0,229,255,.12);
-  margin-bottom: 4px;
-}
-.wc-title {
-  font-family: 'Syne', sans-serif;
-  font-size: 22px; font-weight: 800;
-  color: var(--white); letter-spacing: -.3px;
-  text-align: center;
-}
-.wc-sub {
-  font-size: 14px; color: var(--sub);
-  text-align: center; max-width: 380px; line-height: 1.6;
-}
-.wc-chips {
-  display: flex; flex-wrap: wrap; gap: 8px;
-  justify-content: center; margin-top: 8px;
-  pointer-events: all;
-}
-.wc-chip {
-  font-family: 'DM Mono', monospace; font-size: 11px;
-  color: var(--body); background: var(--surface);
-  border: 1px solid var(--rim2); border-radius: 20px;
-  padding: 7px 15px; cursor: pointer;
-  transition: all .2s;
-}
-.wc-chip:hover {
-  color: var(--glow); border-color: rgba(0,229,255,.35);
-  background: rgba(0,229,255,.05);
-  transform: translateY(-1px);
-}
-
-/* ─── CHART COLOURS ──────────────────────────────────────────── */
-.c-cyan   { color: #00e5ff; }
-.c-green  { color: #00ff9d; }
-.c-amber  { color: #ffb800; }
-.c-red    { color: #ff3c5a; }
-.c-purple { color: #bb77ff; }
-
-/* ─── UTIL ───────────────────────────────────────────────────── */
-hr.bubble-hr { border: none; border-top: 1px solid var(--rim); margin: 10px 0; }
+/* ── ALERT TOASTS ── */
+#toasts{position:fixed;top:60px;right:14px;z-index:500;display:flex;flex-direction:column;gap:6px;pointer-events:none;}
+.toast{background:var(--surface2);border:1px solid var(--rim2);border-radius:var(--r);padding:9px 13px;font-family:'DM Mono',monospace;font-size:11px;box-shadow:0 4px 28px rgba(0,0,0,.45);pointer-events:all;animation:ti .3s ease both;max-width:270px;}
+.toast.crit{border-color:rgba(255,60,90,.4);}
+.toast.warn{border-color:rgba(255,184,0,.35);}
+.toast.ok{border-color:rgba(0,255,157,.3);}
+@keyframes ti{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
 </style>
 </head>
 <body>
 
-<!-- ══ TOP BAR ══════════════════════════════════════════════════ -->
+<div id="toasts"></div>
+<input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleImg(event)">
+
+<!-- ══ TOP BAR ══ -->
 <div id="topbar">
   <div class="tb-brand">
-    <div class="tb-logo">ILSA</div>
-    <div>
-      <div class="tb-name">Mission AI</div>
-      <div class="tb-sub">CHANDRAYAAN-3 · CH3-ILSA</div>
-    </div>
+    <div class="tb-logo">AI</div>
+    <div><div class="tb-name">ILSA Mission AI</div><div class="tb-tagline">CHANDRAYAAN-3 · CH3-ILSA</div></div>
   </div>
-
-  <div class="tb-divider"></div>
-
-  <div class="tb-metric">
-    <div class="tb-label">ANOMALY SCORE</div>
-    <div class="tb-value" id="tb_score">—</div>
-  </div>
-
-  <div class="tb-divider"></div>
-
-  <div class="tb-metric">
-    <div class="tb-label">STA/LTA</div>
-    <div class="tb-value" id="tb_stalta">—</div>
-  </div>
-
-  <div class="tb-divider"></div>
-
-  <div class="tb-metric">
-    <div class="tb-label">CNN EVENT</div>
-    <div class="tb-value" id="tb_event" style="font-size:11px">—</div>
-  </div>
-
-  <div class="tb-divider"></div>
-
-  <div class="tb-metric">
-    <div class="tb-label">TEMP TREND</div>
-    <div class="tb-value" id="tb_trend">—</div>
-  </div>
-
-  <div class="tb-divider"></div>
-
-  <div class="tb-metric">
-    <div class="tb-label">PACKETS</div>
-    <div class="tb-value" id="tb_pkts" style="color:var(--sub)">0</div>
-  </div>
-
+  <div class="tb-div"></div>
+  <div class="tb-metric"><div class="tb-lbl">SCORE</div><div class="tb-val" id="tb_score">—</div></div>
+  <div class="tb-div"></div>
+  <div class="tb-metric"><div class="tb-lbl">STA/LTA</div><div class="tb-val" id="tb_stalta">—</div></div>
+  <div class="tb-div"></div>
+  <div class="tb-metric"><div class="tb-lbl">CNN EVENT</div><div class="tb-val" id="tb_event" style="font-size:10px">—</div></div>
+  <div class="tb-div"></div>
+  <div class="tb-metric"><div class="tb-lbl">TREND</div><div class="tb-val" id="tb_trend">—</div></div>
+  <div class="tb-div"></div>
+  <div class="tb-metric"><div class="tb-lbl">PACKETS</div><div class="tb-val" id="tb_pkts" style="color:var(--sub)">0</div></div>
   <div class="tb-right">
-    <div class="tb-status-badge" id="tb_badge">AWAITING</div>
+    <div class="theme-toggle">
+      <div class="th-opt" data-t="light" onclick="setTheme('light')">☀</div>
+      <div class="th-opt active" data-t="dark" onclick="setTheme('dark')">◑</div>
+      <div class="th-opt" data-t="auto" onclick="setTheme('auto')">⚙</div>
+    </div>
+    <div class="alert-bell" id="ab" onclick="clearAlerts()" title="Click to clear">🔔<div class="ab-cnt" id="ab_cnt">0</div></div>
+    <div class="status-badge" id="tb_badge">AWAITING</div>
     <div class="ws-dot" id="ws_dot"></div>
-    <div class="tb-clock" id="tb_clock">--:--:--</div>
+    <div class="tb-clk" id="tb_clk">--:--:--</div>
   </div>
 </div>
 
-<!-- ══ CHAT ══════════════════════════════════════════════════════ -->
-<div id="chat">
-  <!-- Welcome screen -->
-  <div id="welcome">
-    <div class="wc-icon">AI</div>
-    <div class="wc-title">ILSA Mission AI</div>
-    <div class="wc-sub">Ask me anything about the mission. I can show sensor graphs, seismic events, anomaly history, or generate a full report — just ask.</div>
-    <div class="wc-chips">
-      <div class="wc-chip" onclick="send('Show temperature graph')">Show temperature graph</div>
-      <div class="wc-chip" onclick="send('Any anomalies right now?')">Any anomalies right now?</div>
-      <div class="wc-chip" onclick="send('Plot seismic events')">Plot seismic events</div>
-      <div class="wc-chip" onclick="send('Mission health summary')">Mission health summary</div>
-      <div class="wc-chip" onclick="send('Show anomaly score history')">Show anomaly score history</div>
-      <div class="wc-chip" onclick="send('What moonquake type is detected?')">What moonquake type is detected?</div>
-    </div>
-  </div>
-</div>
+<!-- ══ LAYOUT ══ -->
+<div id="layout">
 
-<!-- ══ INPUT BAR ═════════════════════════════════════════════════ -->
-<div id="inputbar">
-  <div class="input-wrap">
-    <div class="suggestions" id="suggestions">
-      <span class="sug" onclick="send('Show temperature graph')">📈 temperature graph</span>
-      <span class="sug" onclick="send('Plot STA/LTA and anomaly score history')">📊 anomaly history</span>
-      <span class="sug" onclick="send('Show seismic events')">🌑 seismic events</span>
-      <span class="sug" onclick="send('Mission health summary')">🛰 health summary</span>
-      <span class="sug" onclick="send('Generate PDF report')">📄 PDF report</span>
-      <span class="sug" onclick="send('Show acceleration graph')">⚡ acceleration</span>
-    </div>
-    <div class="input-field-row">
-      <button id="imgBtn" onclick="document.getElementById('fileInput').click()" title="Analyze image">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16">
-          <rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/>
-          <path d="M21 15l-5-5L5 21"/>
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+
+    <!-- 1. Score ring + sparkline -->
+    <div class="sb-sec">
+      <div class="sb-ttl">ANOMALY SCORE <b id="sb_stlbl">NOMINAL</b></div>
+      <div class="ring-wrap">
+        <svg class="ring-svg" viewBox="0 0 54 54">
+          <circle class="ring-bg" cx="27" cy="27" r="22"/>
+          <circle class="ring-fg" id="rfg" cx="27" cy="27" r="22" stroke="var(--glow2)"
+            style="stroke-dashoffset:34;transform:rotate(-90deg);transform-origin:50% 50%"/>
         </svg>
-      </button>
-      <input type="file" id="fileInput" accept="image/*" onchange="handleImageUpload(event)">
-      <textarea id="msgInput" placeholder="Ask about sensor data, events, or say 'show temperature graph'…" rows="1"
-        onkeydown="onKey(event)" oninput="autoResize(this)"></textarea>
-      <button id="sendBtn" onclick="sendClick()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-        </svg>
-      </button>
+        <div><div class="ring-n" id="ring_n">—</div><div class="ring-s" id="ring_s">awaiting…</div></div>
+      </div>
+      <div class="spark-h"><canvas id="sparkC"></canvas></div>
     </div>
-    <div class="input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line &nbsp;·&nbsp; 📎 upload image for AI vision analysis</div>
+
+    <!-- 2. Temperature -->
+    <div class="sb-sec">
+      <div class="sb-ttl">TEMPERATURE</div>
+      <div class="chart-mini"><canvas id="tempC"></canvas></div>
+      <div class="chart-leg">
+        <span style="color:#00e5ff">─ xT</span><span style="color:#00ff9d">─ yT</span>
+        <span style="color:#ffb800">─ zT</span><span style="color:#bb77ff">╌ pred</span>
+      </div>
+    </div>
+
+    <!-- 3. Acceleration -->
+    <div class="sb-sec">
+      <div class="sb-ttl">ACCELERATION</div>
+      <div class="chart-mini"><canvas id="accelC"></canvas></div>
+      <div class="chart-leg"><span style="color:#00e5ff">─ Fine Z</span><span style="color:#ff3c5a">╌ RMS</span></div>
+    </div>
+
+    <!-- 4. STA/LTA -->
+    <div class="sb-sec">
+      <div class="sb-ttl">STA/LTA SEISMIC <b id="sb_stlbl2" style="color:var(--sub)">IDLE</b></div>
+      <div class="chart-mini"><canvas id="staltaC"></canvas></div>
+      <div style="margin-top:5px;font-family:'DM Mono',monospace;font-size:8.5px;color:var(--sub)">
+        Events: <span id="sb_evc" style="color:var(--purple)">0</span>
+        &nbsp;·&nbsp; Last: <span id="sb_lev" style="color:var(--purple)">—</span>
+      </div>
+    </div>
+
+    <!-- 5. Model outputs -->
+    <div class="sb-sec">
+      <div class="sb-ttl">4 MODEL OUTPUTS</div>
+      <div class="m-grid">
+        <div class="mcard" id="mc_l"><div class="mc-name" style="color:#00e5ff">LSTM</div><div class="mc-val" id="mv_l">—</div><div class="mc-bdg bn" id="mb_l">NORMAL</div></div>
+        <div class="mcard" id="mc_c"><div class="mc-name" style="color:#00ff9d">CNN</div><div class="mc-val" id="mv_c">—</div><div class="mc-bdg bn" id="mb_c">NORMAL</div></div>
+      </div>
+      <div class="m-grid" style="margin-top:5px">
+        <div class="mcard" id="mc_t"><div class="mc-name" style="color:#ffb800">TRANS</div><div class="mc-val" id="mv_t">—</div><div class="mc-bdg bn" id="mb_t">STABLE</div></div>
+        <div class="mcard" id="mc_g"><div class="mc-name" style="color:#bb77ff">GNN</div><div class="mc-val" id="mv_g">—</div><div class="mc-bdg bp" id="mb_g">NOMINAL</div></div>
+      </div>
+    </div>
+
+    <!-- 6. Health bars -->
+    <div class="sb-sec">
+      <div class="sb-ttl">SUBSYSTEM HEALTH</div>
+      <div class="hb-row" id="hbars"></div>
+    </div>
+
+    <!-- 7. Session stats -->
+    <div class="sb-sec">
+      <div class="sb-ttl">SESSION STATS</div>
+      <div class="stat-g">
+        <div class="stat-item"><div class="stat-lbl">PACKETS</div><div class="stat-val" id="st_p">0</div></div>
+        <div class="stat-item"><div class="stat-lbl">SEISMIC</div><div class="stat-val" id="st_s" style="color:var(--purple)">0</div></div>
+        <div class="stat-item"><div class="stat-lbl">CRITICALS</div><div class="stat-val" id="st_c" style="color:var(--crit)">0</div></div>
+        <div class="stat-item"><div class="stat-lbl">WARNINGS</div><div class="stat-val" id="st_w" style="color:var(--warn)">0</div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CHAT PANEL -->
+  <div id="chatpanel">
+    <div id="chat">
+      <div id="welcome">
+        <div class="wc-icon">AI</div>
+        <div class="wc-title">ILSA Mission AI</div>
+        <div class="wc-sub">Ask anything — I'll show live graphs, seismic events, model analysis, or generate reports right here in chat.</div>
+        <div class="wc-chips">
+          <div class="wc-chip" onclick="send('Show temperature graph')">📈 temperature</div>
+          <div class="wc-chip" onclick="send('Any anomalies right now?')">🔍 anomaly check</div>
+          <div class="wc-chip" onclick="send('Plot seismic events')">🌑 seismic events</div>
+          <div class="wc-chip" onclick="send('Mission health summary')">🛰 health summary</div>
+          <div class="wc-chip" onclick="send('Show anomaly score history')">📊 score history</div>
+          <div class="wc-chip" onclick="send('Generate PDF report')">📄 PDF report</div>
+        </div>
+      </div>
+    </div>
+    <div id="inputbar">
+      <div class="sugs">
+        <span class="sug" onclick="send('Show temperature graph')">📈 temperature</span>
+        <span class="sug" onclick="send('Show anomaly score history')">📊 anomaly history</span>
+        <span class="sug" onclick="send('Plot seismic events')">🌑 seismic events</span>
+        <span class="sug" onclick="send('Mission health summary')">🛰 health summary</span>
+        <span class="sug" onclick="send('Generate PDF report')">📄 PDF report</span>
+        <span class="sug" onclick="send('Show acceleration graph')">⚡ acceleration</span>
+      </div>
+      <div class="input-row">
+        <button id="imgBtn" onclick="document.getElementById('fileInput').click()" title="Analyze image">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15">
+            <rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
+          </svg>
+        </button>
+        <textarea id="msgInput" placeholder="Ask about sensor data, say 'show temperature graph', or upload an image…" rows="1" onkeydown="onKey(event)" oninput="autoR(this)"></textarea>
+        <button id="sendBtn" onclick="sendClick()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="16" height="16">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+      <div class="hint">Enter to send · Shift+Enter new line · 📎 upload image for AI vision analysis</div>
+    </div>
   </div>
 </div>
 
 <script>
-// ══════════════════════════════════════════════════════
-// LIVE TELEMETRY  (WebSocket)
-// ══════════════════════════════════════════════════════
-let live = {
-  sensors:{}, anomaly_score:0, status:'NOMINAL',
-  models:{ lstm:{}, cnn:{}, transformer:{}, gnn:{} },
-  packet_count:0, file_info:''
-};
-let pkts = 0;
-const scoreHist=[], staltaHist=[], tempHist=[], accelHist=[], timeHist=[];
-const MAX_HIST = 300;
+'use strict';
+// ══════════════════════ THEME ══════════════════════
+function setTheme(t){
+  let applied=t;
+  if(t==='auto') applied=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';
+  document.documentElement.setAttribute('data-theme',applied);
+  document.querySelectorAll('.th-opt').forEach(e=>e.classList.toggle('active',e.dataset.t===t));
+  localStorage.setItem('ilsa_theme',t);
+  setTimeout(rebuildCharts,60);
+}
+(()=>{
+  const s=localStorage.getItem('ilsa_theme')||'dark';
+  const applied=s==='auto'?(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'):s;
+  document.documentElement.setAttribute('data-theme',applied);
+  const el=document.querySelector(`.th-opt[data-t="${s}"]`);
+  if(el){document.querySelectorAll('.th-opt').forEach(e=>e.classList.remove('active'));el.classList.add('active');}
+})();
+
+// ══════════════════════ TELEMETRY ══════════════════════
+let live={sensors:{},anomaly_score:0,status:'NOMINAL',models:{lstm:{},cnn:{},transformer:{},gnn:{}},packet_count:0};
+let pkts=0,seisEvts=0,crits=0,warns=0;
+const N=160,scoreH=[],staltaH=[],tempH=[],accelH=[],timeH=[];
 
 function wsConnect(){
-  const ws = new WebSocket('ws://127.0.0.1:9000/telemetry');
-  ws.onopen = () => {
-    document.getElementById('ws_dot').className = 'ws-dot live';
-  };
-  ws.onclose = () => {
-    document.getElementById('ws_dot').className = 'ws-dot';
-    setTimeout(wsConnect, 3000);
-  };
-  ws.onmessage = ev => {
-    try { live = JSON.parse(ev.data); } catch(e){ return; }
+  const ws=new WebSocket('ws://127.0.0.1:9000/telemetry');
+  ws.onopen=()=>document.getElementById('ws_dot').className='ws-dot live';
+  ws.onclose=()=>{document.getElementById('ws_dot').className='ws-dot';setTimeout(wsConnect,3000);};
+  ws.onmessage=ev=>{
+    try{live=JSON.parse(ev.data);}catch(e){return;}
     pkts++;
-    updateTopBar();
-    // Store history
-    const s = live.sensors||{};
-    const m = live.models||{};
-    scoreHist.push(live.anomaly_score||0);
-    staltaHist.push(m.lstm?.stalta_ratio||0);
-    tempHist.push({ x:s.xTemp, y:s.yTemp, z:s.zTemp, p:m.transformer?.pred_xTemp });
-    accelHist.push({
-      fx:s['X Fine Acceleration'], fy:s['Y Fine Acceleration'], fz:s['Z Fine Acceleration'],
-      cx:s['X Coarse Acceleration'], cy:s['Y Coarse Acceleration'], cz:s['Z Coarse Acceleration'],
-      rms:m.cnn?.rms_accel
-    });
-    timeHist.push(pkts);
-    if(scoreHist.length>MAX_HIST){ scoreHist.shift(); staltaHist.shift(); tempHist.shift(); accelHist.shift(); timeHist.shift(); }
+    const m=live.models||{},s=live.sensors||{};
+    scoreH.push(live.anomaly_score||0);staltaH.push(m.lstm?.stalta_ratio||0);
+    tempH.push({x:s.xTemp,y:s.yTemp,z:s.zTemp,p:m.transformer?.pred_xTemp});
+    accelH.push({fz:s['Z Fine Acceleration'],rms:m.cnn?.rms_accel});
+    timeH.push(pkts);
+    if(scoreH.length>N){scoreH.shift();staltaH.shift();tempH.shift();accelH.shift();timeH.shift();}
+    updateTopBar();updateSidebar();updateAlerts();updateCharts();
   };
 }
 wsConnect();
+setInterval(()=>document.getElementById('tb_clk').textContent=new Date().toUTCString().match(/\d\d:\d\d:\d\d/)[0],1000);
 
+// ══════════════════════ TOP BAR ══════════════════════
+function sc(v){return v>.2?'crit':v>.05?'warn':'';}
+function sv(id,val,cls){const e=document.getElementById(id);if(!e)return;e.textContent=val;e.className='tb-val'+(cls?' '+cls:'');}
 function updateTopBar(){
-  const score = live.anomaly_score||0;
-  const m = live.models||{};
-  const lstm = m.lstm||{}, cnn = m.cnn||{}, trans = m.transformer||{};
-
-  const se=document.getElementById('tb_score');
-  se.textContent = score.toFixed(4);
-  se.className = 'tb-value' + (score>.2?' crit':score>.05?' warn':'');
-
-  const st=document.getElementById('tb_stalta');
-  const ratio=lstm.stalta_ratio||0;
-  st.textContent = ratio.toFixed(3);
-  st.className = 'tb-value' + (ratio>=3?' crit':ratio>=1.5?' warn':'');
-
-  document.getElementById('tb_event').textContent = (cnn.event_type||'none').replace(/_/g,' ');
-  const trend=trans.trend||'—';
-  const te=document.getElementById('tb_trend');
-  te.textContent = trend;
-  te.className = 'tb-value' + (trend==='RISING'?' warn':trend==='FALLING'?' c-cyan':'');
-  document.getElementById('tb_pkts').textContent = pkts;
-
-  const badge = document.getElementById('tb_badge');
-  badge.textContent = live.status||'NOMINAL';
-  badge.className = 'tb-status-badge' + (live.status==='ANOMALY'?' crit':live.status==='WARNING'?' warn':'');
-}
-
-// ── Clock ──
-setInterval(()=>{
-  document.getElementById('tb_clock').textContent =
-    new Date().toUTCString().match(/\d\d:\d\d:\d\d/)[0];
-},1000);
-
-// ══════════════════════════════════════════════════════
-// CHAT ENGINE
-// ══════════════════════════════════════════════════════
-let chatStarted = false;
-let pendingImageFile = null;
-let pendingImageB64  = null;
-
-function ts(){ return new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }
-
-function hideWelcome(){
-  if(!chatStarted){
-    document.getElementById('welcome').classList.add('hidden');
-    chatStarted = true;
+  const sc2=live.anomaly_score||0,m=live.models||{},lstm=m.lstm||{},cnn=m.cnn||{},trans=m.transformer||{};
+  sv('tb_score',sc2.toFixed(4),sc(sc2));
+  const r=lstm.stalta_ratio||0;
+  // STA/LTA=1.0 is normal (equal energy) — only highlight when triggered
+  const staltaDisplay = r >= 1.5 ? r.toFixed(3) : 'IDLE';
+  sv('tb_stalta', staltaDisplay, r>=3?'crit':r>=1.5?'warn':'');
+  sv('tb_event',(cnn.event_type||'none').replace(/_/g,' '),'');
+  const tr=trans.trend||'—';sv('tb_trend',tr,tr==='RISING'?'warn':'');
+  document.getElementById('tb_pkts').textContent=pkts;
+  const b=document.getElementById('tb_badge');
+  // Show model loading status until 128 valid packets collected
+  const ready=live.model_ready;
+  const validPkts=live.valid_packets||0;
+  if(!ready){
+    b.textContent=`LOADING ${validPkts}/128`;
+    b.className='status-badge warn';
+  } else {
+    b.textContent=live.status||'NOMINAL';
+    b.className='status-badge'+(live.status==='ANOMALY'?' crit':live.status==='WARNING'?' warn':'');
   }
 }
 
-function autoResize(el){
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+// ══════════════════════ SIDEBAR ══════════════════════
+const SUBS=[{k:'thermal',l:'THERMAL'},{k:'structural',l:'STRUCT'},{k:'seismic',l:'SEISMIC'},{k:'navigation',l:'NAV'},{k:'power',l:'POWER'}];
+let hbBuilt=false;
+function updateSidebar(){
+  const score=live.anomaly_score||0,m=live.models||{},lstm=m.lstm||{},cnn=m.cnn||{},trans=m.transformer||{},gnn=m.gnn||{};
+  // Ring
+  const C=2*Math.PI*22,health=Math.round((1-Math.min(score,1))*100),off=C*(1-health/100);
+  const rc=score>.2?'var(--crit)':score>.05?'var(--warn)':'var(--glow2)';
+  const rfg=document.getElementById('rfg');
+  rfg.style.strokeDashoffset=off;rfg.style.stroke=rc;rfg.style.filter=`drop-shadow(0 0 3px ${rc})`;
+  document.getElementById('ring_n').textContent=health;document.getElementById('ring_n').style.color=rc;
+  document.getElementById('ring_s').textContent=`score ${score.toFixed(4)}`;
+  document.getElementById('sb_stlbl').textContent=live.status||'NOMINAL';document.getElementById('sb_stlbl').style.color=rc;
+  // Model cards
+  umc('l',`${(lstm.score||0).toFixed(4)} · ${(lstm.stalta_ratio||0).toFixed(2)}`,lstm.status==='ANOMALY'?'bc':lstm.status==='WARNING'?'bw':'bn',lstm.status||'NORMAL');
+  umc('c',`${(cnn.event_type||'norm').substring(0,12).replace(/_/g,' ')} ${(cnn.rms_accel||0).toFixed(3)}`,cnn.severity==='critical'?'bc':cnn.severity==='warning'?'bw':'bn',cnn.severity||'normal');
+  umc('t',`${trans.trend||'STABLE'} ${(trans.pred_xTemp||0).toFixed(2)}`,trans.trend!=='STABLE'?'bw':'bn',trans.trend||'STABLE');
+  const ss=gnn.subsystem_scores||{};
+  umc('g',`seismic:${(ss.seismic||1).toFixed(2)} cp:${gnn.seismic_thermal_coupling?'Y':'N'}`,gnn.cross_anomaly?'bc':gnn.seismic_thermal_coupling?'bw':'bp',gnn.cross_anomaly?'CROSS':gnn.seismic_thermal_coupling?'COUPLING':'NOMINAL');
+  // STA/LTA label
+  const trig=lstm.stalta_triggered;
+  const sl=document.getElementById('sb_stlbl2');
+  const r2=lstm.stalta_ratio||0;
+  sl.textContent=trig?'TRIGGERED':r2>=1.5?r2.toFixed(2):'IDLE';
+  sl.style.color=trig?'var(--crit)':r2>=1.5?'var(--warn)':'var(--sub)';
+  // Health bars
+  if(!hbBuilt){
+    document.getElementById('hbars').innerHTML=SUBS.map(s=>`<div class="hb-item"><div class="hb-lbl">${s.l}</div><div class="hb-track"><div class="hb-fill hg" id="hb_${s.k}" style="width:100%"></div></div><div class="hb-pct hb-lbl" id="hp_${s.k}">100%</div></div>`).join('');
+    hbBuilt=true;
+  }
+  SUBS.forEach(s=>{
+    const v=gnn.subsystem_scores?.[s.k]!=null?gnn.subsystem_scores[s.k]:Math.max(0,1-score);
+    const pct=Math.round(v*100),cls=pct>=70?'hg':pct>=40?'ha':'hr2';
+    const f=document.getElementById('hb_'+s.k),p=document.getElementById('hp_'+s.k);
+    if(f){f.style.width=pct+'%';f.className='hb-fill '+cls;}
+    if(p){p.textContent=pct+'%';p.style.color=pct>=70?'var(--glow2)':pct>=40?'var(--warn)':'var(--crit)';}
+  });
+  document.getElementById('st_p').textContent=pkts;
+  document.getElementById('st_c').textContent=crits;
+  document.getElementById('st_w').textContent=warns;
+}
+function umc(id,val,bcls,btxt){
+  const v=document.getElementById('mv_'+id),b=document.getElementById('mb_'+id);
+  if(v)v.textContent=val;if(b){b.textContent=btxt;b.className='mc-bdg '+bcls;}
+  if(bcls==='bc'){const c=document.getElementById('mc_'+id);c.classList.remove('flash');void c.offsetWidth;c.classList.add('flash');}
+}
+// Poll seismic events
+function pollSeis(){
+  fetch('/history?format=events').then(r=>r.json()).then(d=>{
+    const n=d.events?.length||0;
+    document.getElementById('sb_evc').textContent=n;document.getElementById('st_s').textContent=n;
+    if(n>0){const last=d.events[n-1];document.getElementById('sb_lev').textContent=(last?.event_type||'—').replace(/_/g,' ').substring(0,12);}
+  }).catch(()=>{});
+}
+setInterval(pollSeis,10000);setTimeout(pollSeis,2000);
+
+// ══════════════════════ ALERT SYSTEM ══════════════════════
+let alertCnt=0,prevSc=0,prevTrig=false,prevCoup=false;
+function updateAlerts(){
+  const score=live.anomaly_score||0,m=live.models||{},lstm=m.lstm||{},gnn=m.gnn||{};
+  const trig=lstm.stalta_triggered||false,coup=gnn.seismic_thermal_coupling||false;
+  if(score>.2&&prevSc<=.2){crits++;fireAlert('crit',`🚨 CRITICAL — score ${score.toFixed(4)}`,`Score exceeded 0.20. Cause: ${lstm.dominant_cause||'unknown'}.`);}
+  else if(score>.05&&prevSc<=.05){warns++;fireAlert('warn',`⚠ WARNING — score ${score.toFixed(4)}`,`Anomaly in warning zone. CNN: ${(m.cnn?.event_type||'—').replace(/_/g,' ')}.`);}
+  else if(score<=.05&&prevSc>.05){fireAlert('ok','✓ Score nominal',`Returned to ${score.toFixed(4)} — below warning threshold.`);}
+  if(trig&&!prevTrig){seisEvts++;document.getElementById('st_s').textContent=seisEvts;fireAlert('warn',`🌑 SEISMIC EVENT`,`STA/LTA triggered: ${(lstm.stalta_ratio||0).toFixed(3)}. CNN: ${(m.cnn?.event_type||'—').replace(/_/g,' ')}.`);}
+  if(coup&&!prevCoup){fireAlert('crit','⚡ SEISMIC-THERMAL COUPLING',`GNN detected simultaneous seismic + thermal anomaly.`);}
+  prevSc=score;prevTrig=trig;prevCoup=coup;
+}
+function fireAlert(lvl,title,detail){
+  alertCnt++;
+  const ab=document.getElementById('ab'),ac=document.getElementById('ab_cnt');
+  ab.classList.add('ring');ac.style.display='flex';ac.textContent=alertCnt;
+  setTimeout(()=>ab.classList.remove('ring'),2000);
+  // Toast
+  const t=document.createElement('div');t.className=`toast ${lvl}`;
+  t.innerHTML=`<div style="font-weight:600;color:var(--white);margin-bottom:2px">${title}</div><div style="font-size:10px;color:var(--sub);line-height:1.5">${detail}</div>`;
+  document.getElementById('toasts').appendChild(t);setTimeout(()=>t.remove(),6000);
+  // Chat injection
+  const row=document.createElement('div');row.className='msg-row ai';
+  row.innerHTML=`<div class="avatar ai" style="font-size:14px">⚡</div>
+    <div class="bwrap"><div class="bubble ${lvl==='crit'?'acrit':lvl==='warn'?'awarn':'aok'}">
+      <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;margin-bottom:3px">${title}</div>
+      <div style="font-size:12.5px;line-height:1.6">${detail}</div>
+      <hr class="bhr"><div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--sub)">AUTO-ALERT · ${new Date().toLocaleTimeString()} · score ${(live.anomaly_score||0).toFixed(4)}</div>
+    </div><div class="mts">${ts()}</div></div>`;
+  chatEl().appendChild(row);scrollChat();
+}
+function clearAlerts(){alertCnt=0;document.getElementById('ab_cnt').style.display='none';document.getElementById('ab').classList.remove('ring');}
+
+// ══════════════════════ SIDEBAR CHARTS ══════════════════════
+const CC={c:'#00e5ff',g:'#00ff9d',a:'#ffb800',r:'#ff3c5a',p:'#bb77ff'};
+function sbOpts(yd=false){
+  const dk=document.documentElement.getAttribute('data-theme')==='dark';
+  const gc=dk?'rgba(255,255,255,.04)':'rgba(0,0,0,.06)',tc=dk?'#2e404e':'#9ca3af';
+  return {animation:false,responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{enabled:false}},
+    scales:{x:{display:false},y:{grid:{color:gc,drawBorder:false},ticks:{color:tc,font:{family:"'DM Mono'",size:7},maxTicksLimit:3}}}};
+}
+function mds(data,color,ex={}){return{data,borderColor:color,borderWidth:1.5,fill:false,pointRadius:0,tension:.4,...ex};}
+let sparkC,tempC,accelC,staltaC;
+function buildCharts(){
+  const mk=(id,ds,opts)=>{const el=document.getElementById(id);if(!el)return null;return new Chart(el,{type:'line',data:{labels:Array(N).fill(''),datasets:ds},options:opts});};
+  sparkC=mk('sparkC',[{...mds([],CC.r),fill:true,backgroundColor:'rgba(255,60,90,.07)'}],{...sbOpts(),scales:{x:{display:false},y:{display:false}}});
+  tempC=mk('tempC',[mds([],CC.c),mds([],CC.g),mds([],CC.a),mds([],CC.p,{borderDash:[3,3],borderWidth:1})],sbOpts());
+  accelC=mk('accelC',[mds([],CC.c),mds([],CC.r,{borderDash:[3,3]})],sbOpts());
+  staltaC=mk('staltaC',[{...mds([],CC.p),fill:true,backgroundColor:'rgba(187,119,255,.07)'}],sbOpts());
+}
+buildCharts();
+function psh(ch,i,v){if(!ch||v==null||isNaN(v))return;const d=ch.data.datasets[i].data;d.push(v);if(d.length>N)d.shift();}
+function updateCharts(){
+  const m=live.models||{},s=live.sensors||{};
+  psh(sparkC,0,live.anomaly_score);sparkC?.update('none');
+  psh(tempC,0,s.xTemp);psh(tempC,1,s.yTemp);psh(tempC,2,s.zTemp);psh(tempC,3,m.transformer?.pred_xTemp);tempC?.update('none');
+  psh(accelC,0,s['Z Fine Acceleration']);psh(accelC,1,m.cnn?.rms_accel);accelC?.update('none');
+  psh(staltaC,0,m.lstm?.stalta_ratio);staltaC?.update('none');
+}
+function rebuildCharts(){
+  [sparkC,tempC,accelC,staltaC].forEach(c=>c?.destroy());
+  buildCharts();
+  scoreH.forEach((_,i)=>{
+    psh(sparkC,0,scoreH[i]);
+    psh(tempC,0,tempH[i]?.x);psh(tempC,1,tempH[i]?.y);psh(tempC,2,tempH[i]?.z);psh(tempC,3,tempH[i]?.p);
+    psh(accelC,0,accelH[i]?.fz);psh(accelC,1,accelH[i]?.rms);
+    psh(staltaC,0,staltaH[i]);
+  });
+  [sparkC,tempC,accelC,staltaC].forEach(c=>c?.update('none'));
 }
 
-function onKey(e){
-  if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendClick(); }
+// ══════════════════════ MULTI-TURN MEMORY ══════════════════════
+const memory=[];const MAX_MEM=10;
+function remember(role,content){
+  memory.push({role,content:content.substring(0,350)});
+  if(memory.length>MAX_MEM*2)memory.splice(0,2);
+}
+function memCtx(){
+  if(!memory.length)return'';
+  return'\n\nCONVERSATION HISTORY:\n'+memory.slice(-MAX_MEM).map(m=>`[${m.role.toUpperCase()}]: ${m.content}`).join('\n');
 }
 
-function sendClick(){
-  const inp = document.getElementById('msgInput');
-  const text = inp.value.trim();
-  if(!text && !pendingImageFile) return;
-  inp.value=''; inp.style.height='auto';
-  send(text);
-}
+// ══════════════════════ CHAT ENGINE ══════════════════════
+let started=false,pendingFile=null,pendingB64=null;
+function ts(){return new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}
+function chatEl(){return document.getElementById('chat');}
+function scrollChat(){setTimeout(()=>{const c=chatEl();c.scrollTop=c.scrollHeight;},60);}
+function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
+function autoR(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,125)+'px';}
+function onKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendClick();}}
+function hideWelcome(){if(!started){document.getElementById('welcome').classList.add('hidden');started=true;}}
+function sendClick(){const inp=document.getElementById('msgInput'),t=inp.value.trim();if(!t&&!pendingFile)return;inp.value='';inp.style.height='auto';send(t);}
 
 function send(text){
-  hideWelcome();
-  appendUser(text);
-  const lower = text.toLowerCase();
-
-  // ── INTENT ROUTING ──────────────────────────────────
-  if(pendingImageFile){
-    // Image analysis takes priority
-    const file = pendingImageFile;
-    const b64  = pendingImageB64;
-    const type = detectImageType(text);
-    pendingImageFile = null; pendingImageB64 = null;
-    clearImagePreview();
-    doImageAnalysis(file, b64, type, text);
-    return;
-  }
-
-  if(/temp(erature)?|xtemp|ytemp|ztemp|thermal/i.test(lower)){
-    showTyping().then(id=>{ removeTyping(id); appendTempChart(); });
-  } else if(/accel(eration)?|fine|coarse|vibrat/i.test(lower)){
-    showTyping().then(id=>{ removeTyping(id); appendAccelChart(); });
-  } else if(/anomaly.*(score|hist)|score.*(hist|chart|plot|graph)|stalta.*hist/i.test(lower)){
-    showTyping().then(id=>{ removeTyping(id); appendScoreChart(); });
-  } else if(/seismic.*(event|log|chart|plot|graph)|moonquake.*plot|event.*log/i.test(lower)){
-    showTyping().then(id=>{ removeTyping(id); appendSeismicChart(text); });
-  } else if(/health.*sum|mission.*sum|sum.*health|overview|status.*all/i.test(lower)){
-    showTyping().then(id=>{ removeTyping(id); appendHealthSummary(); });
-  } else if(/pdf.*report|report.*pdf|generate.*report|report.*generate/i.test(lower)){
-    showTyping().then(id=>{ removeTyping(id); triggerReport('pdf'); });
-  } else if(/html.*report|report.*html/i.test(lower)){
-    showTyping().then(id=>{ removeTyping(id); triggerReport('html'); });
-  } else if(/report/i.test(lower)){
-    showTyping().then(id=>{ removeTyping(id); appendBubble(`I can generate a <strong>PDF report</strong> or <strong>HTML report</strong> with all charts, seismic events, and an AI narrative.<br><br>Say <code>generate PDF report</code> or <code>generate HTML report</code>.`,'ai'); });
-  } else if(/show.*graph|show.*chart|plot|graph|draw/i.test(lower)){
-    // Generic graph request — figure out which
-    showTyping().then(id=>{ removeTyping(id); appendSmartChart(text); });
-  } else {
-    // Everything else → /ask endpoint + llama3
-    doAsk(text);
-  }
+  hideWelcome();appendUser(text);remember('user',text);
+  const lo=text.toLowerCase();
+  if(pendingFile){const f=pendingFile,b=pendingB64;pendingFile=null;pendingB64=null;clearPending();doImgAnalysis(f,b,imgType(text),text);return;}
+  if(/temp(erature)?|xtemp|ytemp|ztemp/i.test(lo))       st(appendTempChart);
+  else if(/accel(eration)?|fine|coarse/i.test(lo))         st(appendAccelChart);
+  else if(/anomaly.*(score|hist)|score.*(hist|graph|chart|plot)|stalta.*hist/i.test(lo)) st(appendScoreChart);
+  else if(/seismic.*(event|log|chart|plot)|moonquake.*plot|event.*log/i.test(lo)) st(appendSeismicChart);
+  else if(/health.*sum|mission.*sum|overview/i.test(lo))   st(appendHealthSummary);
+  else if(/pdf.*report|generate.*report/i.test(lo))        st(()=>doReport('pdf'));
+  else if(/html.*report/i.test(lo))                        st(()=>doReport('html'));
+  else if(/graph|chart|plot|show|draw/i.test(lo))          st(()=>smartChart(lo));
+  else doAsk(text);
 }
+function st(fn){showTyping().then(id=>{removeTyping(id);fn();});}
 
-// ══════════════════════════════════════════════════════
-// MESSAGE RENDERERS
-// ══════════════════════════════════════════════════════
+// ══════════════════════ RENDERERS ══════════════════════
 function appendUser(text){
-  if(!text) return;
-  const row = document.createElement('div');
-  row.className = 'msg-row user';
-  row.innerHTML = `
-    <div class="avatar user">U</div>
-    <div class="bubble-wrap">
-      <div class="bubble user">${escHtml(text)}</div>
-      <div class="msg-ts">${ts()}</div>
-    </div>`;
-  chat().appendChild(row);
-  scrollChat();
+  if(!text)return;
+  const r=document.createElement('div');r.className='msg-row user';
+  r.innerHTML=`<div class="avatar user">U</div><div class="bwrap"><div class="bubble user">${esc(text)}</div><div class="mts">${ts()}</div></div>`;
+  chatEl().appendChild(r);scrollChat();
 }
-
-function appendBubble(html, role='ai'){
-  const row = document.createElement('div');
-  row.className = `msg-row ${role}`;
-  row.innerHTML = `
-    <div class="avatar ${role}">${role==='ai'?'AI':'U'}</div>
-    <div class="bubble-wrap">
-      <div class="bubble ${role}">${html}</div>
-      <div class="msg-ts">${ts()}</div>
-    </div>`;
-  chat().appendChild(row);
-  scrollChat();
-  return row;
+function appendBubble(html,role='ai'){
+  const r=document.createElement('div');r.className=`msg-row ${role}`;
+  r.innerHTML=`<div class="avatar ${role}">${role==='ai'?'AI':'U'}</div><div class="bwrap"><div class="bubble ${role}">${html}</div><div class="mts">${ts()}</div></div>`;
+  chatEl().appendChild(r);scrollChat();return r;
 }
-
 function showTyping(){
   return new Promise(res=>{
-    const row = document.createElement('div');
-    row.className = 'msg-row ai';
-    const id = 'typing_'+Date.now();
-    row.id = id;
-    row.innerHTML = `
-      <div class="avatar ai">AI</div>
-      <div class="bubble-wrap">
-        <div class="bubble typing">
-          <div class="typing-dot"></div>
-          <div class="typing-dot"></div>
-          <div class="typing-dot"></div>
-        </div>
-      </div>`;
-    chat().appendChild(row);
-    scrollChat();
-    setTimeout(()=>res(id), 700);
+    const r=document.createElement('div');r.className='msg-row ai';const id='tp_'+Date.now();r.id=id;
+    r.innerHTML=`<div class="avatar ai">AI</div><div class="bwrap"><div class="bubble typing"><div class="td"></div><div class="td"></div><div class="td"></div></div></div>`;
+    chatEl().appendChild(r);scrollChat();setTimeout(()=>res(id),550);
   });
 }
-function removeTyping(id){
-  const el = document.getElementById(id);
-  if(el) el.remove();
+function removeTyping(id){const e=document.getElementById(id);if(e)e.remove();}
+function appendChartBubble(title,badge,fn,tall=false){
+  const cid='ch_'+Date.now();
+  const r=document.createElement('div');r.className='msg-row ai';
+  r.innerHTML=`<div class="avatar ai">AI</div><div class="bwrap" style="max-width:640px;width:100%"><div class="bubble cb"><div class="cb-title">${title}<em>${badge}</em></div><div class="ch-wrap${tall?' tall':''}"><canvas id="${cid}"></canvas></div></div><div class="mts">${ts()}</div></div>`;
+  chatEl().appendChild(r);scrollChat();setTimeout(()=>fn(cid),50);
 }
 
-function appendChartBubble(title, badge, buildFn){
-  const row = document.createElement('div');
-  row.className = 'msg-row ai';
-  const cid = 'chart_'+Date.now();
-  row.innerHTML = `
-    <div class="avatar ai">AI</div>
-    <div class="bubble-wrap" style="max-width:700px;width:100%">
-      <div class="bubble chart-bubble">
-        <div class="chart-title">${title}<span>${badge}</span></div>
-        <div class="chart-wrap"><canvas id="${cid}"></canvas></div>
-      </div>
-      <div class="msg-ts">${ts()}</div>
-    </div>`;
-  chat().appendChild(row);
-  scrollChat();
-  setTimeout(()=>buildFn(cid), 50);
+// ══════════════════════ CHAT CHARTS ══════════════════════
+function chOpts(dual=false){
+  const dk=document.documentElement.getAttribute('data-theme')==='dark';
+  const gc=dk?'rgba(255,255,255,.04)':'rgba(0,0,0,.06)',tc=dk?'#2e404e':'#9ca3af';
+  const base={animation:false,responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{backgroundColor:dk?'rgba(13,17,23,.95)':'rgba(255,255,255,.98)',borderColor:dk?'rgba(255,255,255,.1)':'rgba(0,0,0,.1)',borderWidth:1,titleColor:tc,bodyColor:dk?'#b8ccd8':'#374151',titleFont:{family:"'DM Mono'"},bodyFont:{family:"'DM Mono'",size:11}}},
+    scales:{x:{display:false},y:{grid:{color:gc,drawBorder:false},ticks:{color:tc,font:{family:"'DM Mono'",size:9}}}}};
+  if(dual)base.scales.y2={position:'right',grid:{drawOnChartArea:false},ticks:{color:CC.p,font:{family:"'DM Mono'",size:9}}};
+  return base;
 }
-
-function chat(){ return document.getElementById('chat'); }
-function scrollChat(){ setTimeout(()=>{ const c=chat(); c.scrollTop=c.scrollHeight; },50); }
-function escHtml(t){ const d=document.createElement('div'); d.textContent=t; return d.innerHTML; }
-
-// ══════════════════════════════════════════════════════
-// CHART FACTORY
-// ══════════════════════════════════════════════════════
-const DARK_BG  = 'transparent';
-const C = { cyan:'#00e5ff', green:'#00ff9d', amber:'#ffb800', red:'#ff3c5a', purple:'#bb77ff', muted:'#3a4a5a' };
-
-function baseOpts(yLabel=''){
-  return {
-    animation:false, responsive:true, maintainAspectRatio:false,
-    plugins:{
-      legend:{display:false},
-      tooltip:{
-        backgroundColor:'rgba(13,17,23,.95)',
-        borderColor:'rgba(255,255,255,.1)', borderWidth:1,
-        titleColor:'#6b7f93', bodyColor:'#b8ccd8',
-        titleFont:{family:"'DM Mono'"},bodyFont:{family:"'DM Mono'",size:11}
-      }
-    },
-    scales:{
-      x:{display:false},
-      y:{
-        grid:{color:'rgba(255,255,255,.04)', drawBorder:false},
-        ticks:{color:'#3a4a5a', font:{family:"'DM Mono'",size:9}},
-        title: yLabel ? {display:true, text:yLabel, color:'#3a4a5a', font:{family:"'DM Mono'",size:9}} : undefined
-      }
-    }
-  };
-}
-
-function makeDataset(data,color,label,opts={}){
-  return { data, borderColor:color, label, borderWidth:1.8, fill:false,
-    pointRadius:0, tension:.4, ...opts };
-}
+function mkD(data,color,ex={}){return{data,borderColor:color,borderWidth:1.8,fill:false,pointRadius:0,tension:.4,...ex};}
 
 function appendTempChart(){
-  appendChartBubble('TEMPERATURE SENSORS', `xT · yT · zT + prediction`, cid=>{
-    const t=timeHist, h=tempHist;
-    new Chart(document.getElementById(cid),{
-      type:'line',
-      data:{labels:t, datasets:[
-        makeDataset(h.map(d=>d.x), C.cyan,  'xTemp'),
-        makeDataset(h.map(d=>d.y), C.green, 'yTemp'),
-        makeDataset(h.map(d=>d.z), C.amber, 'zTemp'),
-        makeDataset(h.map(d=>d.p), C.purple,'pred_xTemp',{borderDash:[4,4],borderWidth:1.2}),
-      ]},
-      options: baseOpts('°C')
-    });
+  appendChartBubble('TEMPERATURE SENSORS','xT · yT · zT + prediction',cid=>{
+    new Chart(document.getElementById(cid),{type:'line',data:{labels:timeH,datasets:[mkD(tempH.map(d=>d.x),CC.c),mkD(tempH.map(d=>d.y),CC.g),mkD(tempH.map(d=>d.z),CC.a),mkD(tempH.map(d=>d.p),CC.p,{borderDash:[4,4],borderWidth:1.2})]},options:chOpts()});
   });
-  appendBubble(`Temperature graph rendered. <span class="c-cyan">xTemp</span>, <span class="c-green">yTemp</span>, <span class="c-amber">zTemp</span> shown with the Transformer prediction (dashed). Current xTemp: <code>${(live.sensors?.xTemp||0).toFixed(4)}</code> · trend: <strong>${live.models?.transformer?.trend||'STABLE'}</strong>`);
+  const t=live.models?.transformer||{};
+  appendBubble(`Temperature chart rendered. xTemp: <code>${(live.sensors?.xTemp||0).toFixed(4)}</code> · trend: <strong>${t.trend||'STABLE'}</strong> · prediction: <code>${(t.pred_xTemp||0).toFixed(4)}</code>`);
+  remember('assistant','Rendered temperature chart.');
 }
-
 function appendAccelChart(){
-  appendChartBubble('ACCELERATION — FINE + COARSE AXES', `CNN RMS · 6-axis`, cid=>{
-    const t=timeHist, h=accelHist;
-    new Chart(document.getElementById(cid),{
-      type:'line',
-      data:{labels:t, datasets:[
-        makeDataset(h.map(d=>d.fx), C.cyan,   'Fine X'),
-        makeDataset(h.map(d=>d.fy), C.green,  'Fine Y'),
-        makeDataset(h.map(d=>d.fz), C.amber,  'Fine Z'),
-        makeDataset(h.map(d=>d.cx), C.purple, 'Coarse X',{borderWidth:1}),
-        makeDataset(h.map(d=>d.cy), '#ff7755','Coarse Y',{borderWidth:1}),
-        makeDataset(h.map(d=>d.rms),C.red,    'CNN RMS',{borderDash:[4,4],borderWidth:1.5}),
-      ]},
-      options: baseOpts('m/s²')
-    });
+  appendChartBubble('ACCELERATION — Fine Z + CNN RMS','seismic sensor',cid=>{
+    new Chart(document.getElementById(cid),{type:'line',data:{labels:timeH,datasets:[mkD(accelH.map(d=>d.fz),CC.c),mkD(accelH.map(d=>d.rms),CC.r,{borderDash:[4,4]})]},options:chOpts()});
   });
-  const cnn = live.models?.cnn||{};
-  appendBubble(`Acceleration chart rendered. CNN reports <strong>${cnn.event_type||'normal'}</strong> · RMS: <code>${(cnn.rms_accel||0).toFixed(4)}</code> · severity: <strong>${cnn.severity||'nominal'}</strong>`);
+  const c=live.models?.cnn||{};
+  appendBubble(`Acceleration chart rendered. CNN: <strong>${(c.event_type||'normal').replace(/_/g,' ')}</strong> · RMS <code>${(c.rms_accel||0).toFixed(5)}</code> · severity: <strong>${c.severity||'nominal'}</strong>`);
+  remember('assistant','Rendered acceleration chart.');
 }
-
 function appendScoreChart(){
-  appendChartBubble('ANOMALY SCORE + STA/LTA RATIO', `LSTM · STA/LTA`, cid=>{
-    const t=timeHist;
-    const opts = baseOpts();
-    opts.scales.y2 = {
-      position:'right',
-      grid:{drawOnChartArea:false},
-      ticks:{color:'#bb77ff',font:{family:"'DM Mono'",size:9}},
-    };
-    new Chart(document.getElementById(cid),{
-      type:'line',
-      data:{labels:t, datasets:[
-        {...makeDataset(scoreHist, C.red, 'Anomaly Score'), fill:true, backgroundColor:'rgba(255,60,90,.07)', yAxisID:'y'},
-        {...makeDataset(staltaHist,C.purple,'STA/LTA'), borderWidth:1.2, yAxisID:'y2'},
-      ]},
-      options: {...opts,
-        plugins:{...opts.plugins, annotation:{
-          annotations:{
-            warn:{type:'line',yMin:.05,yMax:.05,borderColor:C.amber,borderWidth:1,borderDash:[4,4],yScaleID:'y'},
-            crit:{type:'line',yMin:.20,yMax:.20,borderColor:C.red,borderWidth:1,borderDash:[4,4],yScaleID:'y'},
-          }
-        }}
-      }
-    });
+  appendChartBubble('ANOMALY SCORE + STA/LTA','LSTM · seismic detector',cid=>{
+    const o=chOpts(true);
+    new Chart(document.getElementById(cid),{type:'line',data:{labels:timeH,datasets:[{...mkD(scoreH,CC.r),fill:true,backgroundColor:'rgba(255,60,90,.07)',yAxisID:'y'},{...mkD(staltaH,CC.p),borderWidth:1.2,yAxisID:'y2'}]},options:o});
   });
-  const score=live.anomaly_score||0;
-  const lstm=live.models?.lstm||{};
-  appendBubble(`Anomaly score history shown. Current: <code>${score.toFixed(4)}</code> · STA/LTA: <code>${(lstm.stalta_ratio||0).toFixed(3)}</code> · cause: <strong>${lstm.dominant_cause||'—'}</strong><br><span style="color:var(--sub);font-size:12px">Dashed lines = warning (0.05) and critical (0.20) thresholds</span>`);
+  const l=live.models?.lstm||{};
+  const scoreVal=(live.anomaly_score||0);
+  const scoreColor=scoreVal>.2?'var(--crit)':scoreVal>.05?'var(--warn)':'var(--glow2)';
+  const staltaVal=(l.stalta_ratio||0);
+  const staltaNote=staltaVal<1.5?'<span style="color:var(--sub);font-size:11px"> (1.0 = normal, trigger at 3.0)</span>':'';
+  appendBubble(`Score history rendered.<br>
+    Score: <code style="color:${scoreColor}">${scoreVal.toFixed(4)}</code>
+    <span style="font-size:11px;color:var(--sub)">(warn>0.05, crit>0.20)</span><br>
+    STA/LTA: <code>${staltaVal.toFixed(3)}</code>${staltaNote}<br>
+    Dominant cause: <strong>${l.dominant_cause||'—'}</strong> · Real model: <strong>${l.real_model?'✅ PyTorch':'⚠ fallback'}</strong>`);
+  remember('assistant','Rendered anomaly score and STA/LTA history.');
 }
-
-function appendSeismicChart(query){
-  // Fetch events from /history then render
+function appendSeismicChart(){
   fetch('/history?format=events').then(r=>r.json()).then(d=>{
-    const events = d.events||[];
-    if(events.length===0){
-      appendBubble(`No seismic events detected in this session yet. The <strong>STA/LTA detector</strong> is running continuously — events will appear here once the ratio exceeds the trigger threshold of <code>3.0</code>.`);
-      return;
-    }
-    appendChartBubble(`SEISMIC EVENTS — ${events.length} DETECTED`, `STA/LTA at onset`, cid=>{
-      const typeColors = {
-        deep_moonquake:   C.purple,
-        shallow_moonquake:C.red,
-        thermal_cracking: C.amber,
-        meteorite_impact: C.green,
-      };
-      const pts = events.map(ev=>({
-        x: ev.t,
-        y: ev.stalta||0,
-        type: ev.event_type,
-        conf: ev.confidence,
-      }));
-      const datasets = [];
-      const byType = {};
-      pts.forEach(p=>{ (byType[p.type]=byType[p.type]||[]).push(p); });
-      for(const [type,points] of Object.entries(byType)){
-        datasets.push({
-          label: type.replace(/_/g,' '),
-          data: points.map(p=>({x:p.x,y:p.y})),
-          borderColor: typeColors[type]||C.cyan,
-          backgroundColor: typeColors[type]||C.cyan,
-          pointRadius: 8, pointHoverRadius: 10,
-          showLine: false, type:'scatter'
-        });
-      }
-      const opts = baseOpts('STA/LTA at onset');
-      opts.scales.x = { type:'linear', grid:{color:'rgba(255,255,255,.04)'}, ticks:{color:'#3a4a5a',font:{family:"'DM Mono'",size:9}}};
-      opts.plugins.legend = {display:true, labels:{color:'#6b7f93',font:{family:"'DM Mono'",size:10},boxWidth:8}};
-      new Chart(document.getElementById(cid),{ type:'scatter', data:{datasets}, options:opts });
+    const events=d.events||[];
+    if(!events.length){appendBubble(`No seismic events yet. STA/LTA is running — events appear when ratio exceeds <code>3.0</code>.`);return;}
+    const tc2={deep_moonquake:CC.p,shallow_moonquake:CC.r,thermal_cracking:CC.a,meteorite_impact:CC.g};
+    appendChartBubble(`SEISMIC EVENTS — ${events.length} DETECTED`,'STA/LTA at onset',cid=>{
+      const byT={};events.forEach(ev=>(byT[ev.event_type]=byT[ev.event_type]||[]).push({x:ev.t,y:ev.stalta||0}));
+      const ds=Object.entries(byT).map(([t,pts])=>({label:t.replace(/_/g,' '),data:pts,borderColor:tc2[t]||CC.c,backgroundColor:tc2[t]||CC.c,pointRadius:7,showLine:false,type:'scatter'}));
+      const o=chOpts();o.plugins.legend={display:true,labels:{color:'var(--sub)',font:{family:"'DM Mono'",size:9},boxWidth:7}};
+      o.scales.x={type:'linear',grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#2e404e',font:{family:"'DM Mono'",size:9}}};
+      new Chart(document.getElementById(cid),{type:'scatter',data:{datasets:ds},options:o});
+    },true);
+    let evH=`<div style="margin-bottom:7px">${events.length} event${events.length!==1?'s':''} · most recent:</div><div class="ev-list">`;
+    events.slice(-4).reverse().forEach(ev=>{
+      const col=tc2[ev.event_type]||CC.c;
+      evH+=`<div class="ev-item"><span style="color:${col};font-weight:600">${(ev.event_type||'—').replace(/_/g,' ').toUpperCase()}</span>  <span style="color:var(--sub)">t=${ev.t} · STA/LTA ${(ev.stalta||0).toFixed(3)} · conf ${(ev.confidence||0).toFixed(2)} · ${(ev.freq_hz||0).toFixed(3)} Hz</span></div>`;
     });
-    // Event list
-    const evColors = { deep_moonquake:'#bb77ff', shallow_moonquake:'#ff3c5a', thermal_cracking:'#ffb800', meteorite_impact:'#00ff9d' };
-    const row = document.createElement('div');
-    row.className = 'msg-row ai';
-    let evHtml = '<div class="ev-bubble-list">';
-    events.slice(-5).reverse().forEach(ev=>{
-      const col = evColors[ev.event_type]||C.cyan;
-      evHtml+=`<div class="ev-item">
-        <span class="ev-item-type" style="color:${col}">${(ev.event_type||'unknown').replace(/_/g,' ').toUpperCase()}</span>
-        &nbsp;<span style="color:var(--sub)">t=${ev.t} · STA/LTA ${(ev.stalta||0).toFixed(3)} · conf ${(ev.confidence||0).toFixed(2)} · ${(ev.freq_hz||0).toFixed(3)} Hz</span>
-      </div>`;
-    });
-    evHtml += '</div>';
-    const summary = `${events.length} seismic event${events.length!==1?'s':''} detected this session. Most recent: <strong>${(events[events.length-1]?.event_type||'—').replace(/_/g,' ')}</strong>`;
-    const el = document.createElement('div');
-    el.className = 'msg-row ai';
-    el.innerHTML = `<div class="avatar ai">AI</div><div class="bubble-wrap"><div class="bubble ai">${summary}${evHtml}</div><div class="msg-ts">${ts()}</div></div>`;
-    chat().appendChild(el); scrollChat();
-  }).catch(()=>{
-    appendBubble(`Couldn't reach <code>/history</code> endpoint. Is mission_engine.py running?`);
-  });
-}
-
-function appendHealthSummary(){
-  fetch('/history?format=summary').then(r=>r.json()).then(d=>{
-    const m = live.models||{};
-    const lstm=m.lstm||{}, cnn=m.cnn||{}, trans=m.transformer||{}, gnn=m.gnn||{};
-    const score=live.anomaly_score||0;
-    const statusCol = live.status==='ANOMALY'?'var(--crit)':live.status==='WARNING'?'var(--warn)':'var(--glow2)';
-    const row = document.createElement('div');
-    row.className = 'msg-row ai';
-    row.innerHTML = `
-    <div class="avatar ai">AI</div>
-    <div class="bubble-wrap" style="max-width:560px;width:100%">
-      <div class="bubble card-bubble">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
-          <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--white)">Mission Health</div>
-          <div style="font-family:'DM Mono',monospace;font-size:11px;padding:3px 10px;border-radius:20px;
-            background:${live.status==='ANOMALY'?'rgba(255,60,90,.15)':live.status==='WARNING'?'rgba(255,184,0,.15)':'rgba(0,255,157,.1)'};
-            color:${statusCol};border:1px solid ${statusCol}40">
-            ${live.status||'NOMINAL'}
-          </div>
-        </div>
-        <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--sub);margin-bottom:4px">
-          ${d.total_packets||0} packets · ${d.seismic_events||0} seismic events · session ${d.session_duration_s||0}s
-        </div>
-        <hr class="bubble-hr"/>
-        <div class="card-grid">
-          <div class="card-kv">
-            <div class="card-kv-l">ANOMALY SCORE</div>
-            <div class="card-kv-v" style="color:${statusCol}">${score.toFixed(4)}</div>
-          </div>
-          <div class="card-kv">
-            <div class="card-kv-l">STA/LTA RATIO</div>
-            <div class="card-kv-v" style="color:${lstm.stalta_ratio>=3?'var(--crit)':lstm.stalta_ratio>=1.5?'var(--warn)':'var(--glow)'}">
-              ${(lstm.stalta_ratio||0).toFixed(3)}
-            </div>
-          </div>
-          <div class="card-kv">
-            <div class="card-kv-l">CNN EVENT TYPE</div>
-            <div class="card-kv-v" style="color:var(--purple);font-size:12px">${(cnn.event_type||'none').replace(/_/g,' ')}</div>
-          </div>
-          <div class="card-kv">
-            <div class="card-kv-l">TEMP TREND</div>
-            <div class="card-kv-v" style="color:var(--amber)">${trans.trend||'STABLE'}</div>
-          </div>
-          <div class="card-kv">
-            <div class="card-kv-l">MAX SCORE</div>
-            <div class="card-kv-v" style="color:var(--red)">${(d.max_score||0).toFixed(4)}</div>
-          </div>
-          <div class="card-kv">
-            <div class="card-kv-l">GNN COUPLING</div>
-            <div class="card-kv-v" style="font-size:12px;color:${gnn.seismic_thermal_coupling?'var(--crit)':'var(--glow2)'}">
-              ${gnn.seismic_thermal_coupling?'ACTIVE':'none'}
-            </div>
-          </div>
-        </div>
-        <hr class="bubble-hr"/>
-        <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--sub);line-height:1.6">
-          Criticals: <span style="color:var(--crit)">${d.critical_count||0}</span> &nbsp;·&nbsp;
-          Warnings: <span style="color:var(--warn)">${d.warning_count||0}</span> &nbsp;·&nbsp;
-          Seismic events: <span style="color:var(--purple)">${d.seismic_events||0}</span>
-        </div>
-      </div>
-      <div class="msg-ts">${ts()}</div>
-    </div>`;
-    chat().appendChild(row); scrollChat();
+    const row=document.createElement('div');row.className='msg-row ai';
+    row.innerHTML=`<div class="avatar ai">AI</div><div class="bwrap"><div class="bubble ai">${evH}</div></div><div class="mts">${ts()}</div></div>`;
+    chatEl().appendChild(row);scrollChat();
+    remember('assistant',`Showed seismic events. ${events.length} detected.`);
   }).catch(()=>appendBubble(`Couldn't reach <code>/history</code>. Is mission_engine.py running?`));
 }
-
-function appendSmartChart(query){
-  const lower=query.toLowerCase();
-  if(/temp|thermal/i.test(lower)) appendTempChart();
-  else if(/accel|seismic|vibr/i.test(lower)) appendAccelChart();
-  else if(/score|anomaly|stalta/i.test(lower)) appendScoreChart();
-  else if(/event|quake|moonquake/i.test(lower)) appendSeismicChart(query);
-  else {
-    // Show all
-    appendTempChart();
-    setTimeout(appendScoreChart,200);
-    appendBubble(`I showed the temperature and anomaly score graphs. You can also ask for: <code>acceleration graph</code>, <code>seismic events</code>, or <code>mission health summary</code>.`);
-  }
+function appendHealthSummary(){
+  fetch('/history?format=summary').then(r=>r.json()).then(d=>{
+    const m=live.models||{},lstm=m.lstm||{},cnn=m.cnn||{},trans=m.transformer||{},gnn=m.gnn||{};
+    const score=live.anomaly_score||0,sc2=score>.2?'var(--crit)':score>.05?'var(--warn)':'var(--glow2)';
+    const row=document.createElement('div');row.className='msg-row ai';
+    row.innerHTML=`<div class="avatar ai">AI</div><div class="bwrap" style="max-width:480px;width:100%">
+      <div class="bubble cardb">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:5px">
+          <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:var(--white)">Mission Health</div>
+          <div style="font-family:'DM Mono',monospace;font-size:9px;padding:3px 9px;border-radius:20px;background:${live.status==='ANOMALY'?'rgba(255,60,90,.15)':live.status==='WARNING'?'rgba(255,184,0,.12)':'rgba(0,255,157,.08)'};color:${sc2};border:1px solid ${sc2}40">${live.status||'NOMINAL'}</div>
+        </div>
+        <div style="font-family:'DM Mono',monospace;font-size:8.5px;color:var(--sub);margin-bottom:7px">${d.total_packets||0} pkts · ${d.seismic_events||0} seismic · ${d.session_duration_s||0}s</div>
+        <hr class="bhr"/>
+        <div class="card-g">
+          <div class="kv"><div class="kv-l">SCORE</div><div class="kv-v" style="color:${sc2}">${score.toFixed(4)}</div></div>
+          <div class="kv"><div class="kv-l">STA/LTA</div><div class="kv-v" style="color:${lstm.stalta_ratio>=3?'var(--crit)':lstm.stalta_ratio>=1.5?'var(--warn)':'var(--glow)'}">${(lstm.stalta_ratio||0).toFixed(3)}</div></div>
+          <div class="kv"><div class="kv-l">CNN EVENT</div><div class="kv-v" style="color:var(--purple);font-size:11px">${(cnn.event_type||'none').replace(/_/g,' ')}</div></div>
+          <div class="kv"><div class="kv-l">TREND</div><div class="kv-v" style="color:var(--warn)">${trans.trend||'STABLE'}</div></div>
+          <div class="kv"><div class="kv-l">MAX SCORE</div><div class="kv-v" style="color:var(--crit)">${(d.max_score||0).toFixed(4)}</div></div>
+          <div class="kv"><div class="kv-l">COUPLING</div><div class="kv-v" style="font-size:11px;color:${gnn.seismic_thermal_coupling?'var(--crit)':'var(--glow2)'}">${gnn.seismic_thermal_coupling?'ACTIVE':'none'}</div></div>
+        </div>
+        <hr class="bhr"/>
+        <div style="font-family:'DM Mono',monospace;font-size:8.5px;color:var(--sub)">Criticals: <span style="color:var(--crit)">${d.critical_count||0}</span> · Warnings: <span style="color:var(--warn)">${d.warning_count||0}</span> · Seismic: <span style="color:var(--purple)">${d.seismic_events||0}</span></div>
+      </div><div class="mts">${ts()}</div></div>`;
+    chatEl().appendChild(row);scrollChat();
+    remember('assistant',`Health summary: status ${live.status}, score ${score.toFixed(4)}.`);
+  }).catch(()=>appendBubble(`Couldn't reach <code>/history</code>. Is engine running?`));
+}
+function smartChart(lo){
+  if(/temp/i.test(lo))appendTempChart();
+  else if(/accel|seismic|vibr/i.test(lo))appendAccelChart();
+  else if(/score|anomaly/i.test(lo))appendScoreChart();
+  else if(/event|quake/i.test(lo))appendSeismicChart();
+  else{appendTempChart();setTimeout(appendScoreChart,200);appendBubble(`Showed temperature + score. Also: <code>acceleration</code>, <code>seismic events</code>, <code>health summary</code>.`);}
+}
+function doReport(fmt){
+  appendBubble(`Generating <strong>${fmt.toUpperCase()} report</strong>… (30–60s)`);
+  fetch('/report/'+fmt).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.blob();}).then(blob=>{
+    const url=URL.createObjectURL(blob),a=document.createElement('a');
+    const fn=`mission_report_${new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)}.${fmt}`;
+    a.href=url;a.download=fn;a.click();URL.revokeObjectURL(url);
+    if(fmt==='html'){const rd=new FileReader();rd.onload=()=>{const w=window.open('','_blank');w.document.write(rd.result);w.document.close();};rd.readAsText(blob);}
+    appendBubble(`✓ <strong>${fn}</strong> downloaded.`);remember('assistant',`Generated ${fmt} report.`);
+  }).catch(e=>appendBubble(`Report failed: <code>${e.message}</code>`));
 }
 
-// ══════════════════════════════════════════════════════
-// REPORT TRIGGER
-// ══════════════════════════════════════════════════════
-function triggerReport(format){
-  const row = appendBubble(`Generating <strong>${format.toUpperCase()} report</strong> — rendering charts, seismic events, and AI mission narrative. This may take 30–60 seconds…`);
-  fetch('/report/'+format).then(r=>{
-    if(!r.ok) throw new Error('Server error '+r.status);
-    return r.blob();
-  }).then(blob=>{
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    const fname=`mission_report_${new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)}.${format}`;
-    a.href=url; a.download=fname; a.click(); URL.revokeObjectURL(url);
-    if(format==='html'){
-      const rd=new FileReader();
-      rd.onload=()=>{const tab=window.open('','_blank');tab.document.write(rd.result);tab.document.close();};
-      rd.readAsText(blob);
-    }
-    appendBubble(`✓ <strong>${fname}</strong> downloaded. The report includes anomaly history, seismic events, all 4 model outputs, and an AI-written mission narrative.`);
-  }).catch(e=>appendBubble(`Report failed: <code>${e.message}</code> — check mission_engine.py is running.`));
-}
-
-// ══════════════════════════════════════════════════════
-// /ask — AI COPILOT
-// ══════════════════════════════════════════════════════
+// ══════════════════════ MULTI-TURN /ask ══════════════════════
 function doAsk(question){
   showTyping().then(id=>{
     removeTyping(id);
-    fetch(`/ask?question=${encodeURIComponent(question)}`)
-      .then(r=>r.json())
-      .then(d=>{
-        const resp  = d.response||'No response from AI.';
-        const model = d.model_used||'?';
-        const score = (d.anomaly_score||0).toFixed(4);
-        // Clean markdown → HTML
-        let html = mdToHtml(resp);
-        // Footer
-        html += `<hr class="bubble-hr">
-          <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--sub)">
-            via <strong style="color:var(--glow)">${model}</strong> &nbsp;·&nbsp;
-            score <code>${score}</code> &nbsp;·&nbsp;
-            status <strong>${live.status||'—'}</strong>
-          </span>`;
-        appendBubble(html);
-      })
-      .catch(e=>appendBubble(`<span style="color:var(--crit)">Error: ${e.message}</span> — is Ollama running?`));
+    const fullQ=question+memCtx();
+    fetch(`/ask?question=${encodeURIComponent(fullQ)}`).then(r=>r.json()).then(d=>{
+      let html=mdToHtml(d.response||'No response.');
+      html+=`<hr class="bhr"><span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--sub)">via <strong style="color:var(--glow)">${d.model_used||'?'}</strong> · score <code>${(d.anomaly_score||0).toFixed(4)}</code> · ${live.status||'—'}</span>`;
+      appendBubble(html);remember('assistant',(d.response||'').substring(0,350));
+    }).catch(e=>appendBubble(`<span style="color:var(--crit)">${e.message}</span>`));
   });
 }
 
-// ══════════════════════════════════════════════════════
-// IMAGE ANALYSIS
-// ══════════════════════════════════════════════════════
-function detectImageType(text){
-  if(/seismo|waveform/i.test(text)) return 'seismogram';
-  if(/satellite|surface|terrain/i.test(text)) return 'satellite_image';
-  if(/anomaly.*plot|plot.*anomaly/i.test(text)) return 'anomaly_plot';
-  return 'sensor_chart';
+// ══════════════════════ MARKDOWN ══════════════════════
+function mdToHtml(t){
+  if(!t)return'';
+  return t.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/^\s*[-•*]\s+/gm,'• ').replace(/\*\*/g,'').replace(/(?<!\w)\*(?!\w)/g,'').replace(/\n{2,}/g,'<br><br>').replace(/\n/g,'<br>').trim();
 }
 
-function handleImageUpload(e){
-  const file = e.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    pendingImageFile = file;
-    pendingImageB64  = ev.target.result.split(',')[1];
-    // Show preview in chat
-    hideWelcome();
-    const row=document.createElement('div');
-    row.className='msg-row user'; row.id='img_pending_row';
-    row.innerHTML=`
-      <div class="avatar user">U</div>
-      <div class="bubble-wrap">
-        <div class="bubble user" style="padding:10px">
-          <img src="${ev.target.result}" style="max-width:220px;max-height:150px;border-radius:8px;display:block;margin-bottom:6px">
-          <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--sub)">${file.name} · ${(file.size/1024).toFixed(1)} KB</span>
-        </div>
-        <div class="msg-ts">${ts()}</div>
-      </div>`;
-    chat().appendChild(row); scrollChat();
-    // Prompt the user
-    appendBubble(`Image loaded: <strong>${file.name}</strong><br>What type is it? You can say the image type or just hit Enter to analyze. Options: <code>sensor chart</code> · <code>seismogram</code> · <code>satellite image</code> · <code>anomaly plot</code>`, 'ai');
+// ══════════════════════ IMAGE ANALYSIS ══════════════════════
+function imgType(t){return/seismo/i.test(t)?'seismogram':/satell|surface/i.test(t)?'satellite_image':/anomaly/i.test(t)?'anomaly_plot':'sensor_chart';}
+function handleImg(e){
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    pendingFile=file;pendingB64=ev.target.result.split(',')[1];hideWelcome();
+    const r=document.createElement('div');r.className='msg-row user';r.id='img_pend';
+    r.innerHTML=`<div class="avatar user">U</div><div class="bwrap"><div class="bubble user" style="padding:9px"><img src="${ev.target.result}" style="max-width:190px;max-height:120px;border-radius:7px;display:block;margin-bottom:5px"><span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--sub)">${file.name} · ${(file.size/1024).toFixed(1)} KB</span></div><div class="mts">${ts()}</div></div>`;
+    chatEl().appendChild(r);scrollChat();
+    appendBubble(`Image loaded: <strong>${file.name}</strong><br>Type? <code>sensor chart</code> · <code>seismogram</code> · <code>satellite image</code> · <code>anomaly plot</code><br>Hit Enter to analyze or tell me the type.`);
     document.getElementById('msgInput').focus();
   };
-  reader.readAsDataURL(file);
-  e.target.value='';
+  reader.readAsDataURL(file);e.target.value='';
 }
+function clearPending(){const r=document.getElementById('img_pend');if(r)r.remove();}
 
-function clearImagePreview(){
-  const r=document.getElementById('img_pending_row');
-  if(r) r.remove();
-}
-
-// ── Markdown cleaner ─────────────────────────────────────────
-// Converts llama3 markdown to clean HTML
-function mdToHtml(text){
-  if(!text) return '';
-  return text
-    // Strip **bold** wrappers on section headings like **1. DESCRIPTION:**
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    // Strip *italic* or lone * bullets → proper bullet
-    .replace(/^\s*\*\s+/gm, '• ')
-    // Strip trailing ** leftover
-    .replace(/\*\*/g, '')
-    // Strip lone * that aren't bullets
-    .replace(/(?<!\S)\*(?!\s)/g, '')
-    // Numbered items — keep as-is, they'll be clean
-    // Line breaks
-    .replace(/\n{2,}/g, '<br><br>')
-    .replace(/\n/g, '<br>')
-    .trim();
-}
-
-// ── Robust section splitter ────────────────────────────────
-// Works regardless of how llama3 formats the headings
-function parseSections(raw){
-  // Normalise: strip markdown bold, clean up
-  const text = raw
-    .replace(/\*\*/g, '')
-    .replace(/\*/g, '')
-    .trim();
-
-  const sections = { DESCRIPTION:'', ANOMALIES:'', CORRELATION:'', RECOMMENDATION:'' };
-  const keys = Object.keys(sections);
-
-  // Try to find section boundaries by keyword
-  const patterns = {
-    DESCRIPTION:    /(?:^|\n)\s*(?:\d+\.\s*)?DESCRIPTION\s*:?\s*/i,
-    ANOMALIES:      /(?:^|\n)\s*(?:\d+\.\s*)?ANOMAL[^:\n]*:?\s*/i,
-    CORRELATION:    /(?:^|\n)\s*(?:\d+\.\s*)?CORREL[^:\n]*:?\s*/i,
-    RECOMMENDATION: /(?:^|\n)\s*(?:\d+\.\s*)?RECOMM[^:\n]*:?\s*/i,
-  };
-
-  // Find positions of each section header
-  const positions = [];
-  for(const [key, pat] of Object.entries(patterns)){
-    const m = text.match(pat);
-    if(m) positions.push({ key, idx: text.search(pat) + m[0].length });
-  }
-  positions.sort((a,b)=>a.idx-b.idx);
-
-  if(positions.length === 0){
-    // No sections found — put everything in DESCRIPTION
-    sections.DESCRIPTION = text;
-    return sections;
-  }
-
-  // Extract content between section starts
-  for(let i=0; i<positions.length; i++){
-    const start = positions[i].idx;
-    const end   = positions[i+1] ? positions[i+1].idx - text.slice(0, positions[i+1].idx).search(/\s*(?:\d+\.\s*)?(?:ANOMAL|CORREL|RECOMM|DESCRIP)[^:\n]*/i) : text.length;
-    // Simpler: just slice from this header to next header position
-    const nextStart = positions[i+1] ? positions[i+1].idx : text.length;
-    // Backtrack to before the next header keyword
-    let content = text.slice(start, text.length);
-    // Find where next section starts
-    if(i+1 < positions.length){
-      const nextKey  = positions[i+1].key;
-      const nextPat  = patterns[nextKey];
-      const nextMatch = content.search(nextPat);
-      if(nextMatch > 0) content = content.slice(0, nextMatch);
-    }
-    sections[positions[i].key] = content.trim();
-  }
-
-  return sections;
-}
-
-function renderSectionContent(text){
-  // Convert bullet lines starting with - or • to nice HTML
-  const lines = text.split('\n');
-  let html = '';
-  lines.forEach(line=>{
-    const t = line.trim();
-    if(!t){ html += '<br>'; return; }
-    if(/^[-•]\s+/.test(t)){
-      html += `<div style="display:flex;gap:8px;margin:3px 0"><span style="color:var(--glow);flex-shrink:0;margin-top:1px">›</span><span>${escHtml(t.replace(/^[-•]\s+/,''))}</span></div>`;
-    } else {
-      html += `<p style="margin:0 0 6px">${escHtml(t)}</p>`;
-    }
+function parseSecs(raw){
+  const text=raw.replace(/\*\*/g,'').replace(/\*/g,'').trim();
+  const s={DESCRIPTION:'',ANOMALIES:'',CORRELATION:'',RECOMMENDATION:''};
+  const pats={DESCRIPTION:/(?:^|\n)\s*(?:\d+\.\s*)?DESCRIPTION\s*:?\s*/i,ANOMALIES:/(?:^|\n)\s*(?:\d+\.\s*)?ANOMAL[^:\n]*:?\s*/i,CORRELATION:/(?:^|\n)\s*(?:\d+\.\s*)?CORREL[^:\n]*:?\s*/i,RECOMMENDATION:/(?:^|\n)\s*(?:\d+\.\s*)?RECOMM[^:\n]*:?\s*/i};
+  const pos=[];
+  for(const[k,p] of Object.entries(pats)){const m=text.match(p);if(m)pos.push({k,i:text.search(p)+m[0].length});}
+  pos.sort((a,b)=>a.i-b.i);
+  if(!pos.length){s.DESCRIPTION=text;return s;}
+  pos.forEach((p,idx)=>{
+    let c=text.slice(p.i);
+    if(idx+1<pos.length){const allPat=new RegExp(Object.values(pats).map(r=>r.source).join('|'),'i');const nm=c.match(allPat);if(nm&&nm.index>0)c=c.slice(0,nm.index);}
+    s[p.k]=c.trim();
   });
-  return html;
+  return s;
 }
-
-function doImageAnalysis(file, b64, imgType, userText){
+function renderC(text){
+  let h='';
+  text.split('\n').forEach(line=>{
+    const t=line.trim();if(!t){h+='<br>';return;}
+    if(/^[-•]\s+/.test(t))h+=`<div style="display:flex;gap:7px;margin:2px 0"><span style="color:var(--glow);flex-shrink:0">›</span><span>${esc(t.replace(/^[-•]\s+/,''))}</span></div>`;
+    else h+=`<p style="margin:0 0 5px">${esc(t)}</p>`;
+  });
+  return h;
+}
+function doImgAnalysis(file,b64,iType,userText){
   showTyping().then(id=>{
     removeTyping(id);
-    const fd=new FormData(); fd.append('file',file); fd.append('image_type',imgType);
-    fetch(`/analyze-image?image_type=${encodeURIComponent(imgType)}`,{method:'POST',body:fd})
-      .then(r=>r.json())
-      .then(d=>{
-        const diag       = d.diagnostics||{};
-        const analysis   = d.analysis||'No analysis returned.';
-        const ctx        = d.mission_context||{};
-        const hasVision  = diag.has_vision_model;
-
-        // ── NO VISION MODEL — show honest card, not fake analysis ──
-        if(analysis.startsWith('NO_VISION_MODEL')){
-          const telemetry = analysis.split('\n').slice(2).join('\n');
-          const row=document.createElement('div');
-          row.className='msg-row ai';
-          row.innerHTML=`
-            <div class="avatar ai">AI</div>
-            <div class="bubble-wrap" style="max-width:560px;width:100%">
-              <div class="bubble ai" style="padding:0;overflow:hidden">
-                <div style="display:flex;gap:14px;padding:14px 16px;border-bottom:1px solid var(--rim);background:rgba(0,0,0,.2)">
-                  <img src="data:image/*;base64,${b64}" style="width:72px;height:52px;object-fit:cover;border-radius:8px;border:1px solid var(--rim2);flex-shrink:0"/>
-                  <div>
-                    <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--white);margin-bottom:6px">${escHtml(file.name)}</div>
-                    <div style="background:rgba(255,184,0,.12);border:1px solid rgba(255,184,0,.35);border-radius:8px;padding:8px 12px">
-                      <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--warn);margin-bottom:4px">⚠ No Vision Model Installed</div>
-                      <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--body);line-height:1.6">
-                        I cannot see images without <strong>llava</strong>.<br>
-                        Run this in your terminal:<br>
-                        <code style="background:rgba(0,0,0,.4);border:1px solid var(--rim2);padding:4px 10px;border-radius:4px;display:inline-block;margin-top:4px;color:var(--glow)">ollama pull llava</code>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div style="padding:14px 16px">
-                  <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--sub);letter-spacing:2px;margin-bottom:8px">LIVE TELEMETRY — UNRELATED TO IMAGE</div>
-                  <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--body);line-height:1.8;background:var(--surface);border:1px solid var(--rim);border-radius:8px;padding:10px 12px">
-                    ${telemetry.replace(/\n/g,'<br>').replace(/Anomaly score : ([\d.]+)/,'Anomaly score : <span style="color:var(--glow2)">$1</span>').replace(/TRIGGERED/g,'<span style="color:var(--crit)">TRIGGERED</span>')}
-                  </div>
-                </div>
-              </div>
-              <div class="msg-ts">${ts()}</div>
-            </div>`;
-          chat().appendChild(row); scrollChat();
-          return;
-        }
-
-        // ── Parse and clean ──────────────────────────
-        const sections = parseSections(analysis);
-
-        const sectionMeta = {
-          DESCRIPTION:    { color:'var(--glow)',  icon:'🔍', label:'Description' },
-          ANOMALIES:      { color:'var(--warn)',  icon:'⚠',  label:'Anomalies' },
-          CORRELATION:    { color:'var(--glow2)', icon:'📡', label:'Correlation' },
-          RECOMMENDATION: { color:'var(--crit)',  icon:'✅', label:'Recommendation' },
-        };
-
-        let sectionsHtml = '';
-        for(const [key, meta] of Object.entries(sectionMeta)){
-          const content = sections[key];
-          if(content && content.trim()){
-            sectionsHtml += `
-              <div class="img-section" style="margin-bottom:14px">
-                <div class="img-section-hd" style="color:${meta.color};font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;margin-bottom:6px;display:flex;align-items:center;gap:6px">
-                  <span>${meta.icon}</span><span>${meta.label.toUpperCase()}</span>
-                </div>
-                <div style="font-size:13px;color:var(--body);line-height:1.65">
-                  ${renderSectionContent(content)}
-                </div>
-              </div>`;
-          }
-        }
-
-        // Fallback if no sections parsed
-        if(!sectionsHtml.trim()){
-          sectionsHtml = `<div style="font-size:13px;color:var(--body);line-height:1.65">${renderSectionContent(analysis)}</div>`;
-        }
-
-        // ── Model / vision status pill ────────────────
-        const modelPill = hasVision
-          ? `<span style="background:rgba(0,255,157,.1);color:var(--glow2);border:1px solid rgba(0,255,157,.25);border-radius:20px;padding:2px 9px;font-size:10px">llava vision</span>`
-          : `<span style="background:rgba(255,184,0,.1);color:var(--warn);border:1px solid rgba(255,184,0,.3);border-radius:20px;padding:2px 9px;font-size:10px">llama3 · <a href="#" onclick="return false" style="color:var(--warn);text-decoration:underline" title="Run: ollama pull llava">get llava</a></span>`;
-
-        const row=document.createElement('div');
-        row.className='msg-row ai';
-        row.innerHTML=`
-          <div class="avatar ai">AI</div>
-          <div class="bubble-wrap" style="max-width:680px;width:100%">
-            <div class="bubble ai" style="padding:0;overflow:hidden">
-
-              <!-- Header row: thumbnail + meta -->
-              <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:1px solid var(--rim);background:rgba(0,0,0,.2)">
-                <img src="data:image/*;base64,${b64}"
-                  style="width:72px;height:52px;object-fit:cover;border-radius:8px;border:1px solid var(--rim2);flex-shrink:0"/>
-                <div style="flex:1;min-width:0">
-                  <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--white);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(file.name)}</div>
-                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                    <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--sub);background:var(--surface);border:1px solid var(--rim);border-radius:4px;padding:2px 7px">${imgType.replace(/_/g,' ')}</span>
-                    ${modelPill}
-                    <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted)">${(file.size/1024).toFixed(1)} KB</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Analysis sections -->
-              <div style="padding:16px 18px">
-                ${sectionsHtml}
-              </div>
-
-              <!-- Footer context bar -->
-              <div style="padding:8px 18px 12px;border-top:1px solid var(--rim);font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap">
-                <span>score <strong style="color:${ctx.anomaly_score>.2?'var(--crit)':ctx.anomaly_score>.05?'var(--warn)':'var(--glow2)'}">${(ctx.anomaly_score||0).toFixed(4)}</strong></span>
-                <span>status <strong>${ctx.status||'—'}</strong></span>
-                <span>STA/LTA <strong style="color:${ctx.stalta_triggered?'var(--crit)':'var(--sub)'}">${ctx.stalta_triggered?'TRIGGERED':'idle'}</strong></span>
-                ${d.stored_for_report?'<span style="color:var(--glow2)">✓ stored for report</span>':''}
+    const fd=new FormData();fd.append('file',file);fd.append('image_type',iType);
+    fetch(`/analyze-image?image_type=${encodeURIComponent(iType)}`,{method:'POST',body:fd}).then(r=>r.json()).then(d=>{
+      const diag=d.diagnostics||{},analysis=d.analysis||'',ctx=d.mission_context||{};
+      if(analysis.startsWith('NO_VISION_MODEL')){
+        const tel=analysis.split('\n').slice(2).join('\n');
+        const row=document.createElement('div');row.className='msg-row ai';
+        row.innerHTML=`<div class="avatar ai">AI</div><div class="bwrap" style="max-width:500px;width:100%"><div class="bubble ai" style="padding:0;overflow:hidden">
+          <div style="display:flex;gap:11px;padding:11px 13px;border-bottom:1px solid var(--rim);background:rgba(0,0,0,.12)">
+            <img src="data:image/*;base64,${b64}" style="width:62px;height:44px;object-fit:cover;border-radius:7px;border:1px solid var(--rim2);flex-shrink:0"/>
+            <div><div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--white);margin-bottom:5px">${esc(file.name)}</div>
+              <div style="background:rgba(255,184,0,.09);border:1px solid rgba(255,184,0,.28);border-radius:7px;padding:8px 11px">
+                <div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:800;color:var(--warn);margin-bottom:3px">⚠ No Vision Model</div>
+                <div style="font-family:'DM Mono',monospace;font-size:10px;line-height:1.6">Run: <code style="color:var(--glow)">ollama pull llava</code></div>
               </div>
             </div>
-            <div class="msg-ts">${ts()}</div>
-          </div>`;
-        chat().appendChild(row); scrollChat();
-      })
-      .catch(e=>appendBubble(`<span style="color:var(--crit)">Image analysis failed: ${e.message}</span>`));
+          </div>
+          <div style="padding:11px 13px;font-family:'DM Mono',monospace;font-size:10px;line-height:1.7;color:var(--body)">
+            <div style="font-size:7.5px;letter-spacing:2px;color:var(--sub);margin-bottom:5px">LIVE TELEMETRY — UNRELATED TO IMAGE</div>
+            ${tel.replace(/\n/g,'<br>')}
+          </div>
+        </div><div class="mts">${ts()}</div></div>`;
+        chatEl().appendChild(row);scrollChat();return;
+      }
+      const secs=parseSecs(analysis);
+      const sm={DESCRIPTION:{col:'var(--glow)',icon:'🔍',lbl:'Description'},ANOMALIES:{col:'var(--warn)',icon:'⚠',lbl:'Anomalies'},CORRELATION:{col:'var(--glow2)',icon:'📡',lbl:'Correlation'},RECOMMENDATION:{col:'var(--crit)',icon:'✅',lbl:'Recommendation'}};
+      let sh='';
+      for(const[k,meta] of Object.entries(sm)){if(secs[k]?.trim())sh+=`<div style="margin-bottom:11px"><div style="font-family:'DM Mono',monospace;font-size:8px;letter-spacing:2px;color:${meta.col};margin-bottom:4px;display:flex;align-items:center;gap:5px"><span>${meta.icon}</span><span>${meta.lbl.toUpperCase()}</span></div><div style="font-size:13px;color:var(--body);line-height:1.65">${renderC(secs[k])}</div></div>`;}
+      if(!sh)sh=`<div style="font-size:13px;line-height:1.65">${renderC(analysis)}</div>`;
+      const mp=diag.has_vision_model?`<span style="background:rgba(0,255,157,.1);color:var(--glow2);border:1px solid rgba(0,255,157,.25);border-radius:20px;padding:2px 8px;font-size:8.5px">llava</span>`:`<span style="background:rgba(255,184,0,.1);color:var(--warn);border:1px solid rgba(255,184,0,.3);border-radius:20px;padding:2px 8px;font-size:8.5px">llama3 fallback</span>`;
+      const row=document.createElement('div');row.className='msg-row ai';
+      row.innerHTML=`<div class="avatar ai">AI</div><div class="bwrap" style="max-width:620px;width:100%"><div class="bubble ai" style="padding:0;overflow:hidden">
+        <div style="display:flex;gap:11px;padding:11px 13px;border-bottom:1px solid var(--rim);background:rgba(0,0,0,.1)">
+          <img src="data:image/*;base64,${b64}" style="width:66px;height:46px;object-fit:cover;border-radius:7px;border:1px solid var(--rim2);flex-shrink:0"/>
+          <div style="flex:1;min-width:0"><div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--white);margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(file.name)}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${mp}</div></div>
+        </div>
+        <div style="padding:13px 15px">${sh}</div>
+        <div style="padding:5px 15px 9px;border-top:1px solid var(--rim);font-family:'DM Mono',monospace;font-size:8.5px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap">
+          <span>score <strong style="color:${ctx.anomaly_score>.2?'var(--crit)':ctx.anomaly_score>.05?'var(--warn)':'var(--glow2)'}">${(ctx.anomaly_score||0).toFixed(4)}</strong></span>
+          <span>${ctx.status||'—'}</span>
+          <span>STA/LTA <strong style="color:${ctx.stalta_triggered?'var(--crit)':'var(--sub)'}">${ctx.stalta_triggered?'TRIGGERED':'idle'}</strong></span>
+          ${d.stored_for_report?'<span style="color:var(--glow2)">✓ in report queue</span>':''}
+        </div>
+      </div><div class="mts">${ts()}</div></div>`;
+      chatEl().appendChild(row);scrollChat();
+      remember('assistant',`Analyzed image ${file.name}.`);
+    }).catch(e=>appendBubble(`<span style="color:var(--crit)">Image analysis failed: ${e.message}</span>`));
   });
 }
 </script>
