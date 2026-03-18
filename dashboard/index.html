@@ -88,7 +88,7 @@ body{background:var(--bg);color:var(--body);font-family:'DM Sans',sans-serif;fon
 .mcard.flash{animation:mf .5s ease;}
 @keyframes mf{0%{background:rgba(0,229,255,.1)}100%{background:var(--surface)}}
 .mc-name{font-family:'DM Mono',monospace;font-size:7.5px;font-weight:500;letter-spacing:1px;margin-bottom:3px;}
-.mc-val{font-family:'DM Mono',monospace;font-size:9.5px;color:var(--body);line-height:1.4;}
+.mc-val{font-family:'DM Mono',monospace;font-size:9px;color:var(--body);line-height:1.5;}
 .mc-bdg{display:inline-block;font-family:'DM Mono',monospace;font-size:7px;padding:1px 5px;border-radius:3px;margin-top:3px;letter-spacing:1px;}
 .bn{background:rgba(0,255,157,.1);color:var(--glow2);}
 .bw{background:rgba(255,184,0,.12);color:var(--warn);}
@@ -133,9 +133,9 @@ body{background:var(--bg);color:var(--body);font-family:'DM Sans',sans-serif;fon
 .bubble.ai code{font-family:'DM Mono',monospace;font-size:11.5px;background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.15);padding:1px 6px;border-radius:4px;color:var(--glow);}
 .bubble.ai strong{color:var(--white);}
 /* Alert bubbles */
-.bubble.acrit{background:rgba(255,60,90,.1);border:1px solid rgba(255,60,90,.3);color:var(--white);animation:ap .4s cubic-bezier(.2,.8,.3,1) both;}
-.bubble.awarn{background:rgba(255,184,0,.09);border:1px solid rgba(255,184,0,.28);color:var(--white);animation:ap .4s ease both;}
-.bubble.aok{background:rgba(0,255,157,.08);border:1px solid rgba(0,255,157,.22);color:var(--white);animation:ap .4s ease both;}
+.bubble.acrit{background:rgba(255,60,90,.08);border:1px solid rgba(255,60,90,.25);color:var(--body);animation:ap .4s cubic-bezier(.2,.8,.3,1) both;}
+.bubble.awarn{background:rgba(255,184,0,.07);border:1px solid rgba(255,184,0,.22);color:var(--body);animation:ap .4s ease both;}
+.bubble.aok{background:rgba(0,255,157,.06);border:1px solid rgba(0,255,157,.18);color:var(--body);animation:ap .4s ease both;}
 @keyframes ap{from{opacity:0;transform:scale(.95) translateY(6px)}to{opacity:1;transform:none}}
 /* Typing */
 .bubble.typing{background:var(--surface);border:1px solid var(--rim);padding:12px 15px;display:flex;align-items:center;gap:5px;}
@@ -333,8 +333,10 @@ hr.bhr{border:none;border-top:1px solid var(--rim);margin:8px 0;}
         <span class="sug" onclick="send('Show anomaly score history')">📊 anomaly history</span>
         <span class="sug" onclick="send('Plot seismic events')">🌑 seismic events</span>
         <span class="sug" onclick="send('Mission health summary')">🛰 health summary</span>
+        <span class="sug" onclick="runDiagnosis()" style="color:var(--warn);border-color:rgba(255,184,0,.3)">🔬 diagnose anomaly</span>
+        <span class="sug" onclick="send('Why is there an anomaly?')">❓ why anomaly?</span>
+        <span class="sug" onclick="send('What should I do now?')">✅ what to do?</span>
         <span class="sug" onclick="send('Generate PDF report')">📄 PDF report</span>
-        <span class="sug" onclick="send('Show acceleration graph')">⚡ acceleration</span>
       </div>
       <div class="input-row">
         <button id="imgBtn" onclick="document.getElementById('fileInput').click()" title="Analyze image">
@@ -437,11 +439,16 @@ function updateSidebar(){
   document.getElementById('ring_s').textContent=`score ${score.toFixed(4)}`;
   document.getElementById('sb_stlbl').textContent=live.status||'NOMINAL';document.getElementById('sb_stlbl').style.color=rc;
   // Model cards
-  umc('l',`${(lstm.score||0).toFixed(4)} · ${(lstm.stalta_ratio||0).toFixed(2)}`,lstm.status==='ANOMALY'?'bc':lstm.status==='WARNING'?'bw':'bn',lstm.status||'NORMAL');
-  umc('c',`${(cnn.event_type||'norm').substring(0,12).replace(/_/g,' ')} ${(cnn.rms_accel||0).toFixed(3)}`,cnn.severity==='critical'?'bc':cnn.severity==='warning'?'bw':'bn',cnn.severity||'normal');
-  umc('t',`${trans.trend||'STABLE'} ${(trans.pred_xTemp||0).toFixed(2)}`,trans.trend!=='STABLE'?'bw':'bn',trans.trend||'STABLE');
+  umc('l',`score: ${(lstm.score||0).toFixed(4)}`,lstm.status==='ANOMALY'?'bc':lstm.status==='WARNING'?'bw':'bn',lstm.status||'NORMAL');
+  const cnnType=(cnn.event_type||'normal').replace(/_/g,' ');
+  umc('c',`${cnnType}<br>rms: ${(cnn.rms_accel||0).toFixed(4)}`,cnn.severity==='critical'?'bc':cnn.severity==='warning'?'bw':'bn',(cnn.severity||'normal').toUpperCase());
+  umc('t',`trend: ${trans.trend||'STABLE'}<br>pred: ${(trans.pred_xTemp||0).toFixed(3)}°C`,trans.trend!=='STABLE'?'bw':'bn',trans.trend||'STABLE');
   const ss=gnn.subsystem_scores||{};
-  umc('g',`seismic:${(ss.seismic||1).toFixed(2)} cp:${gnn.seismic_thermal_coupling?'Y':'N'}`,gnn.cross_anomaly?'bc':gnn.seismic_thermal_coupling?'bw':'bp',gnn.cross_anomaly?'CROSS':gnn.seismic_thermal_coupling?'COUPLING':'NOMINAL');
+  const gnnSeis=(ss.seismic||1).toFixed(2);
+  const gnnCoup=gnn.seismic_thermal_coupling?'YES':'no';
+  umc('g',`seismic: ${gnnSeis}<br>coupling: ${gnnCoup}`,
+    gnn.cross_anomaly?'bc':gnn.seismic_thermal_coupling?'bw':'bp',
+    gnn.cross_anomaly?'CROSS ANOMALY':gnn.seismic_thermal_coupling?'COUPLING':'NOMINAL');
   // STA/LTA label
   const trig=lstm.stalta_triggered;
   const sl=document.getElementById('sb_stlbl2');
@@ -466,7 +473,8 @@ function updateSidebar(){
 }
 function umc(id,val,bcls,btxt){
   const v=document.getElementById('mv_'+id),b=document.getElementById('mb_'+id);
-  if(v)v.textContent=val;if(b){b.textContent=btxt;b.className='mc-bdg '+bcls;}
+  if(v) v.innerHTML=val;  // innerHTML allows <br> tags
+  if(b){b.textContent=btxt;b.className='mc-bdg '+bcls;}
   if(bcls==='bc'){const c=document.getElementById('mc_'+id);c.classList.remove('flash');void c.offsetWidth;c.classList.add('flash');}
 }
 // Poll seismic events
@@ -504,8 +512,8 @@ function fireAlert(lvl,title,detail){
   const row=document.createElement('div');row.className='msg-row ai';
   row.innerHTML=`<div class="avatar ai" style="font-size:14px">⚡</div>
     <div class="bwrap"><div class="bubble ${lvl==='crit'?'acrit':lvl==='warn'?'awarn':'aok'}">
-      <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;margin-bottom:3px">${title}</div>
-      <div style="font-size:12.5px;line-height:1.6">${detail}</div>
+      <div style="font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;margin-bottom:3px;color:var(--white)">${title}</div>
+      <div style="font-size:12px;line-height:1.65;color:var(--body)">${detail}</div>
       <hr class="bhr"><div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--sub)">AUTO-ALERT · ${new Date().toLocaleTimeString()} · score ${(live.anomaly_score||0).toFixed(4)}</div>
     </div><div class="mts">${ts()}</div></div>`;
   chatEl().appendChild(row);scrollChat();
@@ -552,9 +560,10 @@ function rebuildCharts(){
 }
 
 // ══════════════════════ MULTI-TURN MEMORY ══════════════════════
-const memory=[];const MAX_MEM=10;
+const memory=[];const MAX_MEM=6;
 function remember(role,content){
-  memory.push({role,content:content.substring(0,350)});
+  // Keep short — long history causes Ollama timeout
+  memory.push({role,content:content.substring(0,120)});
   if(memory.length>MAX_MEM*2)memory.splice(0,2);
 }
 function memCtx(){
@@ -576,15 +585,23 @@ function sendClick(){const inp=document.getElementById('msgInput'),t=inp.value.t
 function send(text){
   hideWelcome();appendUser(text);remember('user',text);
   const lo=text.toLowerCase();
-  if(pendingFile){const f=pendingFile,b=pendingB64;pendingFile=null;pendingB64=null;clearPending();doImgAnalysis(f,b,imgType(text),text);return;}
-  if(/temp(erature)?|xtemp|ytemp|ztemp/i.test(lo))       st(appendTempChart);
-  else if(/accel(eration)?|fine|coarse/i.test(lo))         st(appendAccelChart);
-  else if(/anomaly.*(score|hist)|score.*(hist|graph|chart|plot)|stalta.*hist/i.test(lo)) st(appendScoreChart);
+  // pendingFile removed — images now auto-analyze on upload
+  // Questions with why/explain/reason/cause/what → always go to AI
+  const isQuestion = /why|explain|reason|cause|what|how|tell me|describe|analyse|analyze/i.test(lo);
+
+  if(isQuestion) {
+    // Always route explanatory questions to AI — never to a chart
+    doAsk(text);
+  }
+  else if(/temp(erature)?|xtemp|ytemp|ztemp/i.test(lo))       st(appendTempChart);
+  else if(/accel(eration)?|fine|coarse/i.test(lo))             st(appendAccelChart);
+  else if(/anomaly.*(score|hist|history)|score.*(hist|graph|chart|plot)|stalta.*hist/i.test(lo)) st(appendScoreChart);
   else if(/seismic.*(event|log|chart|plot)|moonquake.*plot|event.*log/i.test(lo)) st(appendSeismicChart);
-  else if(/health.*sum|mission.*sum|overview/i.test(lo))   st(appendHealthSummary);
-  else if(/pdf.*report|generate.*report/i.test(lo))        st(()=>doReport('pdf'));
-  else if(/html.*report/i.test(lo))                        st(()=>doReport('html'));
-  else if(/graph|chart|plot|show|draw/i.test(lo))          st(()=>smartChart(lo));
+  else if(/health.*sum|mission.*sum|overview/i.test(lo))       st(appendHealthSummary);
+  else if(/pdf.*report|generate.*report/i.test(lo))            st(()=>doReport('pdf'));
+  else if(/html.*report/i.test(lo))                            st(()=>doReport('html'));
+  else if(/graph|chart|plot|show|draw/i.test(lo))              st(()=>smartChart(lo));
+  else if(/diagnos/i.test(lo))                                  runDiagnosis();
   else doAsk(text);
 }
 function st(fn){showTyping().then(id=>{removeTyping(id);fn();});}
@@ -750,17 +767,133 @@ function mdToHtml(t){
 }
 
 // ══════════════════════ IMAGE ANALYSIS ══════════════════════
+function runDiagnosis(){
+  hideWelcome();
+  appendUser('🔬 Run full anomaly diagnosis');
+  showTyping().then(id=>{
+    removeTyping(id);
+    fetch('/diagnose').then(r=>r.json()).then(d=>{
+      const diag=d.diagnosis||{};
+      const score=(d.anomaly_score||0).toFixed(4);
+      const sc=d.anomaly_score>.2?'var(--crit)':d.anomaly_score>.05?'var(--warn)':'var(--glow2)';
+      const riskCol=diag.risk==='CRITICAL'?'var(--crit)':diag.risk==='HIGH'?'var(--crit)':diag.risk==='MEDIUM'?'var(--warn)':diag.risk==='MEDIUM-HIGH'?'var(--warn)':'var(--glow2)';
+
+      // Format causes
+      let causesHtml='';
+      (diag.causes||[]).forEach(c=>{
+        causesHtml+=`<div style="display:flex;gap:8px;margin:3px 0">
+          <span style="color:var(--warn);flex-shrink:0">›</span>
+          <span>${c}</span></div>`;
+      });
+
+      // Format actions
+      let actionsHtml='';
+      (diag.actions||[]).forEach(a=>{
+        const isImmediate=/IMMEDIATE|ALERT|CRITICAL/i.test(a);
+        actionsHtml+=`<div style="display:flex;gap:8px;margin:4px 0;${isImmediate?'font-weight:600':''}">
+          <span style="color:${isImmediate?'var(--crit)':'var(--glow)'};flex-shrink:0">${isImmediate?'⚡':'✓'}</span>
+          <span style="color:${isImmediate?'var(--white)':'var(--body)'}">${a}</span></div>`;
+      });
+
+      // Top sensors
+      let sensorsHtml='';
+      (d.top_sensors||[]).forEach(([name,val])=>{
+        const pct=Math.min(val*1000,100);
+        sensorsHtml+=`<div style="margin:3px 0">
+          <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px">
+            <span style="color:var(--body)">${name}</span>
+            <span style="color:var(--warn)">${val.toFixed(5)}</span>
+          </div>
+          <div style="height:3px;background:var(--rim2);border-radius:2px">
+            <div style="width:${pct}%;height:100%;background:var(--warn);border-radius:2px"></div>
+          </div></div>`;
+      });
+
+      const row=document.createElement('div');row.className='msg-row ai';
+      row.innerHTML=`<div class="avatar ai">AI</div>
+        <div class="bwrap" style="max-width:640px;width:100%">
+          <div class="bubble ai" style="padding:0;overflow:hidden">
+
+            <!-- Header -->
+            <div style="padding:14px 16px;border-bottom:1px solid var(--rim);background:rgba(0,0,0,.15)">
+              <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:var(--white);margin-bottom:5px">
+                🔬 ANOMALY DIAGNOSIS
+              </div>
+              <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--sub)">${diag.title||'—'}</div>
+              <div style="display:flex;gap:10px;margin-top:7px;align-items:center">
+                <span style="font-family:'DM Mono',monospace;font-size:9px;padding:3px 9px;border-radius:20px;
+                  background:rgba(0,0,0,.3);border:1px solid ${sc};color:${sc}">
+                  Score: ${score}
+                </span>
+                <span style="font-family:'DM Mono',monospace;font-size:9px;padding:3px 9px;border-radius:20px;
+                  background:rgba(0,0,0,.3);border:1px solid ${riskCol};color:${riskCol}">
+                  Risk: ${diag.risk||'—'}
+                </span>
+                <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--sub)">
+                  Cause: <strong style="color:var(--warn)">${d.dominant_cause||'—'}</strong>
+                </span>
+              </div>
+            </div>
+
+            <!-- Top anomalous sensors -->
+            ${sensorsHtml?`<div style="padding:12px 16px;border-bottom:1px solid var(--rim)">
+              <div style="font-family:'DM Mono',monospace;font-size:8px;letter-spacing:2px;color:var(--sub);margin-bottom:8px">TOP ANOMALOUS SENSORS</div>
+              ${sensorsHtml}
+            </div>`:''}
+
+            <!-- Causes -->
+            <div style="padding:12px 16px;border-bottom:1px solid var(--rim)">
+              <div style="font-family:'DM Mono',monospace;font-size:8px;letter-spacing:2px;color:var(--glow);margin-bottom:8px">🔍 POSSIBLE CAUSES</div>
+              <div style="font-size:13px;line-height:1.65">${causesHtml}</div>
+            </div>
+
+            <!-- Actions -->
+            <div style="padding:12px 16px">
+              <div style="font-family:'DM Mono',monospace;font-size:8px;letter-spacing:2px;color:var(--glow2);margin-bottom:8px">✅ RECOMMENDED ACTIONS</div>
+              <div style="font-size:13px;line-height:1.65">${actionsHtml}</div>
+            </div>
+
+          </div>
+          <div class="mts">${ts()}</div>
+        </div>`;
+      chatEl().appendChild(row);scrollChat();
+      remember('assistant', `Diagnosis: ${diag.title}. Risk: ${diag.risk}.`);
+    }).catch(e=>appendBubble(`Diagnosis failed: <code>${e.message}</code>`));
+  });
+}
+
 function imgType(t){return/seismo/i.test(t)?'seismogram':/satell|surface/i.test(t)?'satellite_image':/anomaly/i.test(t)?'anomaly_plot':'sensor_chart';}
+
+function autoDetectType(filename){
+  // Detect from filename
+  const f=filename.toLowerCase();
+  if(/seismo|waveform|wave/.test(f))   return 'seismogram';
+  if(/satell|surface|terrain|moon|lunar/.test(f)) return 'satellite_image';
+  if(/anomal|alert|detect/.test(f))    return 'anomaly_plot';
+  if(/sensor|chart|graph|plot|temp|accel/.test(f)) return 'sensor_chart';
+  // Default: treat as general image — llava will describe it accurately
+  return 'sensor_chart';
+}
 function handleImg(e){
   const file=e.target.files[0];if(!file)return;
   const reader=new FileReader();
   reader.onload=ev=>{
-    pendingFile=file;pendingB64=ev.target.result.split(',')[1];hideWelcome();
+    hideWelcome();
+    // Auto-detect image type from filename
+    const fname=file.name.toLowerCase();
+    let autoType='sensor_chart';
+    if(/seismo|waveform|wave/i.test(fname))       autoType='seismogram';
+    else if(/satell|surface|terrain|lunar/i.test(fname)) autoType='satellite_image';
+    else if(/anomaly|alert|plot/i.test(fname))     autoType='anomaly_plot';
+
+    // Show image in chat immediately
     const r=document.createElement('div');r.className='msg-row user';r.id='img_pend';
-    r.innerHTML=`<div class="avatar user">U</div><div class="bwrap"><div class="bubble user" style="padding:9px"><img src="${ev.target.result}" style="max-width:190px;max-height:120px;border-radius:7px;display:block;margin-bottom:5px"><span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--sub)">${file.name} · ${(file.size/1024).toFixed(1)} KB</span></div><div class="mts">${ts()}</div></div>`;
+    r.innerHTML=`<div class="avatar user">U</div><div class="bwrap"><div class="bubble user" style="padding:9px"><img src="${ev.target.result}" style="max-width:190px;max-height:120px;border-radius:7px;display:block;margin-bottom:5px"><span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--sub)">${file.name} · ${(file.size/1024).toFixed(1)} KB · ${autoType.replace(/_/g,' ')}</span></div><div class="mts">${ts()}</div></div>`;
     chatEl().appendChild(r);scrollChat();
-    appendBubble(`Image loaded: <strong>${file.name}</strong><br>Type? <code>sensor chart</code> · <code>seismogram</code> · <code>satellite image</code> · <code>anomaly plot</code><br>Hit Enter to analyze or tell me the type.`);
-    document.getElementById('msgInput').focus();
+
+    // Analyze immediately — no question asked
+    const b64=ev.target.result.split(',')[1];
+    doImgAnalysis(file, b64, autoType, '');
   };
   reader.readAsDataURL(file);e.target.value='';
 }

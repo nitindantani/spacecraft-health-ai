@@ -103,6 +103,7 @@ session_snapshots: deque = deque(maxlen=500)         # for /history replay
 
 # ── Image store: analyzed images saved here for PDF injection ──
 analyzed_images: list = []   # list of {filename, image_b64, image_type, analysis, timestamp, context}
+last_image_context: dict = {}  # most recently analyzed image — used for follow-up questions
 
 
 def safe(d: dict, key: str, default: float = 0.0) -> float:
@@ -548,19 +549,25 @@ class GNNModel:
         f_mag = float(np.sqrt(fx**2 + fy**2 + fz**2))
 
         issues = []
-        if abs(x)  > 50:  issues.append("high_xTemp")
-        if c_mag   > 0.5: issues.append("high_coarse_accel")
-        if f_mag   > 0.2: issues.append("high_fine_accel")
+        if abs(x)  > 40:  issues.append("high_xTemp")       # normal is ~14, warn at 40
+        if c_mag   > 1.5: issues.append("high_coarse_accel") # normal ~0.65 mag
+        if f_mag   > 0.3: issues.append("high_fine_accel")   # normal ~0.124 mag
 
         stalta_active = current_state.get("models", {}).get("lstm", {}).get("stalta_triggered", False)
-        seismic_thermal_coupling = stalta_active and abs(x) > 20
+        # Coupling requires BOTH stalta triggered AND temperature genuinely elevated
+        seismic_thermal_coupling = stalta_active and abs(x) > 30
+        # Cross anomaly only if 2+ sensors genuinely out of range
         cross_anomaly = len(issues) >= 2 or seismic_thermal_coupling
 
         # ── Default subsystem scores ──────────────────────────────
+        # Calibrated to your real sensor ranges:
+        # xTemp normal ~14°C (max ~46), so /60 gives good headroom
+        # Coarse accel normal ~0.65 magnitude, /3.0 keeps it high
+        # Fine accel normal ~0.124 magnitude, /0.4 keeps it high
         subsystem_scores = {
-            "thermal":    max(0.0, 1.0 - abs(x) / 100.0),
-            "structural": max(0.0, 1.0 - c_mag / 2.0),
-            "seismic":    max(0.0, 1.0 - f_mag / 0.5),
+            "thermal":    max(0.0, 1.0 - max(0, abs(x) - 10) / 50.0),
+            "structural": max(0.0, 1.0 - c_mag / 3.0),
+            "seismic":    max(0.0, 1.0 - f_mag / 0.4),
             "navigation": 1.0,
             "power":      1.0,
         }
@@ -646,6 +653,348 @@ def model_name(question: str) -> str:
     return "LSTM"
 
 
+
+# ================================================================
+# CHANDRAYAAN-3 ILSA KNOWLEDGE BASE
+# ================================================================
+# Maps anomaly patterns → physical causes → specific solutions
+# Based on ILSA instrument design and lunar surface conditions
+# ================================================================
+
+ILSA_KNOWLEDGE_BASE = {
+
+    # ── THERMAL ANOMALIES ──────────────────────────────────────────
+    "thermal_high_xtemp": {
+        "title":   "xTemp Sensor Anomaly — Above Normal Range",
+        "causes": [
+            "Lunar noon heating — surface temperature can reach +130°C",
+            "ILSA instrument thermal cycling during day/night transition",
+            "Internal heater circuit activation",
+            "Solar radiation angle change causing direct illumination",
+        ],
+        "risk":    "MEDIUM — sustained high temp can affect sensor calibration",
+        "actions": [
+            "1. Check mission timeline — is spacecraft in lunar noon period?",
+            "2. Compare xTemp with yTemp and zTemp — if all rising: external heating",
+            "3. If only xTemp rising: check ILSA heater circuit status",
+            "4. If xTemp > 40°C: activate thermal regulation mode",
+            "5. If xTemp > 45°C: consider entering instrument safe mode",
+            "6. Log timestamp and temperature value for ground station review",
+        ],
+        "threshold_trigger": lambda s, m: (
+            m.get("dominant_cause") == "thermal" and
+            s.get("xTemp", 0) > 20
+        ),
+    },
+
+    "thermal_all_sensors": {
+        "title":   "Multi-Sensor Thermal Anomaly — All Temp Channels Affected",
+        "causes": [
+            "Spacecraft entering full lunar day — ambient temperature rise",
+            "Thermal protection system degradation",
+            "Heat dissipation from other spacecraft subsystems",
+            "Lunar regolith thermal conductivity change",
+        ],
+        "risk":    "HIGH — affects all 3 temperature sensors simultaneously",
+        "actions": [
+            "1. Verify spacecraft attitude — is ILSA exposed to direct solar flux?",
+            "2. Check power subsystem — excess current generates internal heat",
+            "3. Activate thermal control sequence if available",
+            "4. Reduce instrument duty cycle to lower self-heating",
+            "5. Monitor trend — if all temps rising linearly: external cause",
+            "6. Report to mission control with temperature gradient data",
+        ],
+        "threshold_trigger": lambda s, m: (
+            m.get("dominant_cause") == "thermal" and
+            abs(s.get("xTemp", 0)) > 15 and
+            abs(s.get("yTemp", 0)) > 15
+        ),
+    },
+
+    "thermal_falling": {
+        "title":   "Temperature Drop — Lunar Night Entry Detected",
+        "causes": [
+            "Spacecraft entering lunar night — temperature drops to -180°C",
+            "Shadow from crater rim or surface feature",
+            "Loss of solar power affecting instrument heaters",
+        ],
+        "risk":    "MEDIUM — cold temperatures can cause thermal stress on instrument",
+        "actions": [
+            "1. Verify lunar night timeline — expected or unexpected?",
+            "2. Check instrument heater power status",
+            "3. Monitor acceleration sensors for thermal cracking signatures",
+            "4. If temperature dropping rapidly: prepare for hibernation mode",
+            "5. Ensure data buffers are flushed before potential power loss",
+        ],
+        "threshold_trigger": lambda s, m: (
+            m.get("trend") == "FALLING" and
+            m.get("dominant_cause") == "thermal"
+        ),
+    },
+
+    # ── SEISMIC ANOMALIES ──────────────────────────────────────────
+    "seismic_deep_moonquake": {
+        "title":   "Deep Moonquake Detected",
+        "causes": [
+            "Tidal forces from Earth causing deep interior fracturing",
+            "Deep moonquakes occur at 700-1200 km depth",
+            "Characteristic low frequency (0.5-1.0 Hz), long duration (>60s)",
+            "Repeating events — same source activated by tidal cycle",
+        ],
+        "risk":    "LOW for instrument — deep quakes are weak at surface",
+        "actions": [
+            "1. Log event timestamp, STA/LTA ratio, and duration",
+            "2. Record full waveform for ground station analysis",
+            "3. Check if event matches known deep moonquake nests (A-type sources)",
+            "4. Correlate with Earth-Moon distance — tidal triggering likely",
+            "5. No immediate instrument action required — continue monitoring",
+            "6. Flag event in mission log as SCIENTIFIC DETECTION",
+        ],
+        "threshold_trigger": lambda s, m: (
+            m.get("event_type") == "deep_moonquake"
+        ),
+    },
+
+    "seismic_shallow_moonquake": {
+        "title":   "Shallow Moonquake Detected — High Priority",
+        "causes": [
+            "Tectonic stress release in lunar crust (0-200 km depth)",
+            "Largest moonquakes — magnitude up to 5.5",
+            "Can last 10+ minutes due to low lunar attenuation",
+            "Rarer than deep moonquakes but significantly stronger",
+        ],
+        "risk":    "HIGH — shallow moonquakes can damage surface instruments",
+        "actions": [
+            "1. IMMEDIATE: Check instrument physical integrity",
+            "2. Verify ILSA mounting and coupling to lunar surface",
+            "3. Check all sensor channels for saturation or offset",
+            "4. Record full event — this is rare and scientifically valuable",
+            "5. Compare amplitude with Apollo seismic network data",
+            "6. Alert mission control — potential instrument health check required",
+            "7. After event: run instrument self-test and calibration check",
+        ],
+        "threshold_trigger": lambda s, m: (
+            m.get("event_type") == "shallow_moonquake"
+        ),
+    },
+
+    "seismic_meteorite_impact": {
+        "title":   "Meteorite Impact Detected",
+        "causes": [
+            "Meteoroid impacting lunar surface near ILSA deployment site",
+            "Characteristic impulsive onset, broadband frequency content",
+            "Impact energy converts to seismic and acoustic waves",
+            "Moon receives ~100 ton of meteoritic material per day",
+        ],
+        "risk":    "LOW-MEDIUM — depends on proximity of impact",
+        "actions": [
+            "1. Note exact timestamp for crater identification via orbital imagery",
+            "2. Estimate impact distance from waveform amplitude decay",
+            "3. Record peak ground velocity for impact energy estimation",
+            "4. Check for any ejecta-related instrument contamination",
+            "5. Report to mission control — potential new crater formation",
+            "6. Cross-reference with Lunar Reconnaissance Orbiter imagery",
+        ],
+        "threshold_trigger": lambda s, m: (
+            m.get("event_type") == "meteorite_impact"
+        ),
+    },
+
+    "seismic_thermal_cracking": {
+        "title":   "Thermal Cracking / Thermoelastic Event",
+        "causes": [
+            "Rapid temperature change causing rock fracture",
+            "Common at lunar sunrise/sunset — 300°C/hour temperature gradient",
+            "Regolith expansion/contraction generating seismic signals",
+            "ILSA instrument mounting bracket thermal stress",
+        ],
+        "risk":    "LOW — natural lunar surface process, not structural threat",
+        "actions": [
+            "1. Check mission timeline — near lunar sunrise or sunset?",
+            "2. Correlate with temperature sensor readings",
+            "3. If both thermal anomaly AND seismic detected: thermoelastic confirmed",
+            "4. No immediate action required — document event",
+            "5. Monitor for increasing frequency of events",
+        ],
+        "threshold_trigger": lambda s, m: (
+            m.get("event_type") == "thermal_cracking"
+        ),
+    },
+
+    # ── COUPLING ANOMALIES ─────────────────────────────────────────
+    "seismic_thermal_coupling": {
+        "title":   "Seismic-Thermal Coupling Detected — Complex Event",
+        "causes": [
+            "Thermoelastic moonquake: temperature change causing seismic signal",
+            "Meteorite impact heating + seismic wave simultaneously",
+            "Instrument thermal expansion causing spurious seismic reading",
+            "Genuine moonquake coinciding with thermal transition period",
+        ],
+        "risk":    "MEDIUM-HIGH — complex event, root cause uncertain",
+        "actions": [
+            "1. Check if thermal change preceded seismic by <5 minutes (thermoelastic)",
+            "2. If seismic preceded thermal: possible impact heating event",
+            "3. Check instrument self-noise level — is seismic signal real or artifact?",
+            "4. Run instrument bias check to separate thermal and seismic components",
+            "5. Report as complex event requiring ground station analysis",
+            "6. Do NOT dismiss as noise — document with full sensor data",
+        ],
+        "threshold_trigger": lambda s, m: (
+            m.get("seismic_thermal_coupling") == True
+        ),
+    },
+
+    # ── ACCELERATION ANOMALIES ─────────────────────────────────────
+    "high_coarse_acceleration": {
+        "title":   "High Coarse Acceleration — Structural Concern",
+        "causes": [
+            "Physical disturbance to spacecraft or ILSA instrument",
+            "Wind? No — lunar surface has no atmosphere",
+            "Possible: lander settling into regolith",
+            "Possible: thermal expansion of lander structure",
+            "Possible: nearby impact ejecta hitting lander",
+        ],
+        "risk":    "HIGH — unexpected physical movement of instrument",
+        "actions": [
+            "1. Check lander attitude control system status",
+            "2. Verify ILSA is still properly coupled to lunar surface",
+            "3. Check for instrument tilt — level sensor if available",
+            "4. Compare coarse vs fine acceleration — same direction?",
+            "5. If lander moved: recalibrate ILSA orientation",
+            "6. Alert mission control immediately",
+        ],
+        "threshold_trigger": lambda s, m: (
+            "high_coarse_accel" in m.get("issues", [])
+        ),
+    },
+
+    # ── CRITICAL / COMPOSITE ──────────────────────────────────────
+    "critical_composite": {
+        "title":   "CRITICAL — Multiple Systems Anomalous",
+        "causes": [
+            "Multiple simultaneous failures — rare but serious",
+            "Power supply instability affecting all sensors",
+            "Software/firmware issue causing sensor readout errors",
+            "Major seismic event affecting entire instrument",
+        ],
+        "risk":    "CRITICAL — immediate attention required",
+        "actions": [
+            "1. IMMEDIATE: Alert mission control",
+            "2. Run full instrument diagnostic sequence",
+            "3. Check power supply voltage and current draw",
+            "4. Attempt instrument soft reset if communication available",
+            "5. Switch to backup data recording mode",
+            "6. Preserve all data — do not overwrite buffers",
+            "7. Prepare for potential safe mode entry",
+        ],
+        "threshold_trigger": lambda s, m: (
+            m.get("score", 0) > 0.7 and
+            len(m.get("issues", [])) >= 2
+        ),
+    },
+}
+
+
+def diagnose_anomaly(state: dict) -> dict:
+    """
+    Match current state against knowledge base to find best matching
+    anomaly type, cause, and recommended actions.
+    Returns the best matching knowledge base entry + confidence.
+    """
+    m      = state.get("models", {})
+    lstm   = m.get("lstm",  {})
+    cnn    = m.get("cnn",   {})
+    trans  = m.get("transformer", {})
+    gnn    = m.get("gnn",   {})
+    s      = state.get("sensors", {})
+
+    score  = lstm.get("score", 0)
+    status = lstm.get("status", "NORMAL")
+
+    # Build combined model context for trigger evaluation
+    combined = {
+        "score":                    score,
+        "dominant_cause":           lstm.get("dominant_cause", ""),
+        "event_type":               cnn.get("event_type", ""),
+        "trend":                    trans.get("trend", "STABLE"),
+        "seismic_thermal_coupling": gnn.get("seismic_thermal_coupling", False),
+        "issues":                   gnn.get("issues", []),
+        "stalta_triggered":         lstm.get("stalta_triggered", False),
+    }
+
+    if status == "NORMAL":
+        return {
+            "matched":  False,
+            "title":    "All Systems Nominal",
+            "causes":   ["No anomaly detected — LSTM reconstruction error within normal range"],
+            "risk":     "NONE",
+            "actions":  ["Continue standard monitoring", "No action required"],
+        }
+
+    # Check each knowledge base entry
+    matches = []
+    for key, entry in ILSA_KNOWLEDGE_BASE.items():
+        try:
+            if entry["threshold_trigger"](s, combined):
+                matches.append((key, entry))
+        except Exception:
+            pass
+
+    if not matches:
+        # Default anomaly entry
+        return {
+            "matched":  True,
+            "key":      "unknown",
+            "title":    f"Anomaly Detected — Score {score:.4f}",
+            "causes":   [
+                f"LSTM reconstruction error elevated ({score:.4f} > threshold 0.20)",
+                f"Dominant cause identified as: {combined['dominant_cause'].upper()}",
+                "Specific physical cause requires further investigation",
+            ],
+            "risk":     "MEDIUM",
+            "actions":  [
+                "1. Monitor all sensor channels for trend continuation",
+                "2. Check if anomaly correlates with known mission timeline events",
+                "3. Compare with historical baseline from mission start",
+                "4. Report to ground station if score remains elevated > 5 minutes",
+            ],
+        }
+
+    # Return the highest-priority match
+    # Priority: critical_composite > seismic > thermal
+    priority_order = [
+        "critical_composite",
+        "seismic_shallow_moonquake",
+        "meteorite_impact",
+        "seismic_thermal_coupling",
+        "seismic_deep_moonquake",
+        "seismic_thermal_cracking",
+        "high_coarse_acceleration",
+        "thermal_all_sensors",
+        "thermal_high_xtemp",
+        "thermal_falling",
+    ]
+
+    best = None
+    for pkey in priority_order:
+        for mkey, mentry in matches:
+            if mkey == pkey:
+                best = mentry
+                break
+        if best:
+            break
+
+    if not best:
+        best = matches[0][1]
+
+    return {
+        "matched":  True,
+        "title":    best["title"],
+        "causes":   best["causes"],
+        "risk":     best["risk"],
+        "actions":  best["actions"],
+    }
+
 # ================================================================
 # LLM (Ollama llama3)
 # ================================================================
@@ -656,29 +1005,56 @@ def explain(model_result: dict, question: str, sensors: dict) -> str:
     trans_m= m.get("transformer", {})
     gnn_m  = m.get("gnn",  {})
 
-    # Build rich context so llama3 can answer without needing to think too hard
-    prompt = f"""You are an expert spacecraft mission AI analyst for Chandrayaan-3 ILSA seismometer data.
-Be concise — answer in 3-5 sentences maximum. Use the data provided.
+    # ── Run knowledge base diagnosis ──────────────────────────────
+    diagnosis = diagnose_anomaly(current_state)
 
-LIVE SENSOR READINGS:
-- xTemp={safe(sensors,'xTemp'):.4f}°C  yTemp={safe(sensors,'yTemp'):.4f}°C  zTemp={safe(sensors,'zTemp'):.4f}°C
-- Fine Accel X={safe(sensors,'X Fine Acceleration'):.6f}  Y={safe(sensors,'Y Fine Acceleration'):.6f}  Z={safe(sensors,'Z Fine Acceleration'):.6f}
-- Coarse Accel X={safe(sensors,'X Coarse Acceleration'):.6f}  Y={safe(sensors,'Y Coarse Acceleration'):.6f}  Z={safe(sensors,'Z Coarse Acceleration'):.6f}
+    # Find top anomalous sensors
+    sensor_errs    = lstm_m.get("sensor_errors", {})
+    top_sensors    = sorted(sensor_errs.items(), key=lambda x: x[1], reverse=True)[:3] if sensor_errs else []
+    top_sensor_str = ", ".join(f"{k}={v:.5f}" for k,v in top_sensors) if top_sensors else "unavailable"
 
-MODEL OUTPUTS:
-- LSTM (real PyTorch): score={lstm_m.get('score',0):.4f} status={lstm_m.get('status','?')} cause={lstm_m.get('dominant_cause','?')} real_model={lstm_m.get('real_model',False)}
-- CNN: event_type={cnn_m.get('event_type','?')} severity={cnn_m.get('severity','?')} freq={cnn_m.get('freq_dominant',0):.3f}Hz
-- Transformer: trend={trans_m.get('trend','?')} pred_xTemp={trans_m.get('pred_xTemp',0):.4f} slope={trans_m.get('slope',0):.6f}
-- GNN: graph_risk={gnn_m.get('graph_risk',0):.4f} coupling={gnn_m.get('seismic_thermal_coupling',False)} subsystems={gnn_m.get('subsystem_scores',{})}
-- STA/LTA ratio={lstm_m.get('stalta_ratio',0):.4f} triggered={lstm_m.get('stalta_triggered',False)}
+    score    = lstm_m.get("score", 0)
+    cause    = lstm_m.get("dominant_cause", "unknown")
+    trend    = trans_m.get("trend", "STABLE")
+    slope    = trans_m.get("slope", 0)
+    xtemp    = safe(sensors, "xTemp")
+    gnn_sc   = gnn_m.get("subsystem_scores", {})
 
-THRESHOLDS: warn>0.05 crit>0.20  |  STA/LTA trigger=3.0
+    # Format knowledge base diagnosis for the prompt
+    kb_causes  = "\n".join(f"  - {c}" for c in diagnosis["causes"])
+    kb_actions = "\n".join(f"  {a}" for a in diagnosis["actions"])
 
-QUESTION: {question}
+    prompt = f"""You are an expert spacecraft mission AI analyst for Chandrayaan-3 ILSA seismometer.
+Answer in clear, structured paragraphs. Be specific — use exact values.
 
-Answer concisely using the data above. If asked about future anomalies, use the trend and slope data.
-If asked about current status, state the score and what it means.
-Do not say you cannot predict — use the Transformer slope and score trajectory to give a best estimate.
+KNOWLEDGE BASE DIAGNOSIS:
+- Anomaly type: {diagnosis["title"]}
+- Risk level: {diagnosis["risk"]}
+- Possible physical causes:
+{kb_causes}
+- Recommended actions:
+{kb_actions}
+
+LIVE SENSOR DATA:
+- LSTM score: {score:.4f} (warn>0.05, CRITICAL>0.20) — Status: {lstm_m.get('status','?')}
+- Dominant cause: {cause.upper()}
+- Top anomalous sensors (reconstruction error): {top_sensor_str}
+- xTemp={xtemp:.4f}°C  yTemp={safe(sensors,'yTemp'):.4f}°C  zTemp={safe(sensors,'zTemp'):.4f}°C
+- Temperature trend: {trend} (slope={slope:.6f}, pred={trans_m.get('pred_xTemp',0):.4f}°C)
+- CNN seismic event: {cnn_m.get('event_type','none')} (severity: {cnn_m.get('severity','?')})
+- STA/LTA: {lstm_m.get('stalta_ratio',0):.4f} ({'TRIGGERED' if lstm_m.get('stalta_triggered') else 'idle'})
+- GNN: thermal={gnn_sc.get('thermal',1):.3f} structural={gnn_sc.get('structural',1):.3f} seismic={gnn_sc.get('seismic',1):.3f}
+- Coupling: {gnn_m.get('seismic_thermal_coupling', False)}
+
+OPERATOR QUESTION: {question}
+
+Using the knowledge base diagnosis AND live sensor data above, provide:
+1. Direct answer to the question
+2. The most likely physical cause based on the specific sensor values
+3. What the operator should do RIGHT NOW (reference the recommended actions)
+4. What to expect next based on current trend
+
+Be technical and specific. Reference actual values. Do not be vague.
 """
     try:
         r = requests.post("http://localhost:11434/api/generate",
@@ -688,31 +1064,130 @@ Do not say you cannot predict — use the Transformer slope and score trajectory
             return resp
         return "Ollama returned empty response. Try asking again."
     except requests.exceptions.ConnectionError:
-        # Fallback: answer directly from data without Ollama
+        # Fallback: use knowledge base directly without Ollama
         score  = lstm_m.get("score", 0)
         trend  = trans_m.get("trend", "STABLE")
         slope  = trans_m.get("slope", 0)
         status = lstm_m.get("status", "NORMAL")
         q      = question.lower()
-        if any(w in q for w in ["future","anomaly","predict","forecast","will"]):
-            return (f"Based on current data — LSTM score is {score:.4f} ({status}). "
-                    f"Temperature trend is {trend} (slope={slope:.6f}). "
-                    f"{'Score is rising — anomaly likely if trend continues.' if slope > 0.01 else 'Score and temperature are stable — no anomaly expected in the near future.' if score < 0.03 else 'Monitor closely — score is elevated.'}")
-        elif any(w in q for w in ["status","health","now","current"]):
-            return (f"Current mission status: {status}. Anomaly score: {score:.4f}. "
-                    f"CNN detected: {cnn_m.get('event_type','normal')}. Temperature: {safe(sensors,'xTemp'):.2f}°C ({trend}). "
-                    f"STA/LTA ratio: {lstm_m.get('stalta_ratio',0):.3f} ({'TRIGGERED' if lstm_m.get('stalta_triggered') else 'idle'}).")
-        return f"[Ollama unavailable] Current score: {score:.4f} ({status}). Trend: {trend}."
+
+        # Always run diagnosis even without Ollama
+        d = diagnose_anomaly(current_state)
+        causes_str  = " | ".join(d["causes"][:2])
+        actions_str = " → ".join(d["actions"][:3])
+
+        if any(w in q for w in ["why","cause","reason","explain"]):
+            return (
+                f"[Ollama offline - Knowledge Base Answer]\n\n"
+                f"ANOMALY TYPE: {d['title']}\n"
+                f"RISK: {d['risk']}\n\n"
+                f"MOST LIKELY CAUSE: {causes_str}\n\n"
+                f"RECOMMENDED ACTIONS: {actions_str}\n\n"
+                f"Score: {score:.4f} | Cause: {lstm_m.get('dominant_cause','?').upper()} | "
+                f"xTemp: {safe(sensors,'xTemp'):.2f}°C ({trend})"
+            )
+        elif any(w in q for w in ["future","predict","forecast","will"]):
+            direction = "rising — anomaly may worsen" if slope > 0.001 else "falling — returning to normal" if slope < -0.001 else "stable"
+            return (
+                f"[Ollama offline - Knowledge Base Answer]\n\n"
+                f"Current score: {score:.4f} ({status}). Temperature trend: {trend} (slope={slope:.6f}).\n"
+                f"Trajectory: {direction}.\n"
+                f"{'Recommend immediate action.' if score > 0.5 else 'Continue monitoring.' if score > 0.05 else 'No action required.'}"
+            )
+        elif any(w in q for w in ["solution","fix","action","do","what should"]):
+            return (
+                f"[Ollama offline - Knowledge Base Answer]\n\n"
+                f"For {d['title']} (Risk: {d['risk']}):\n"
+                + "\n".join(d["actions"])
+            )
+        return (
+            f"[Ollama offline - Knowledge Base Answer]\n"
+            f"Status: {status} | Score: {score:.4f} | Cause: {lstm_m.get('dominant_cause','?')} | "
+            f"Event: {cnn_m.get('event_type','none')} | Trend: {trend}\n"
+            f"Diagnosis: {d['title']} — {d['risk']} risk"
+        )
     except Exception as e:
-        return f"[ERROR] {e}"
+        # Timeout or other error — use knowledge base for instant answer
+        d      = diagnose_anomaly(current_state)
+        score  = lstm_m.get("score", 0)
+        status = lstm_m.get("status", "NORMAL")
+        trend  = trans_m.get("trend", "STABLE")
+        cause  = lstm_m.get("dominant_cause", "unknown")
+        q      = question.lower()
+
+        causes_txt  = "\n".join("* " + c for c in d["causes"])
+        actions_txt = "\n".join(a for a in d["actions"])
+        direction   = ("rising - monitor closely" if trans_m.get("slope",0) > 0.001
+                       else "falling - returning to normal" if trans_m.get("slope",0) < -0.001
+                       else "stable")
+        cnn_event   = current_state.get("models",{}).get("cnn",{}).get("event_type","none")
+
+        if any(w in q for w in ["why","cause","reason","explain","anomaly"]):
+            lines = [
+                "[Knowledge Base answer - Ollama timed out]",
+                "",
+                "ANOMALY TYPE: " + str(d["title"]),
+                "RISK LEVEL: "   + str(d["risk"]),
+                "",
+                "MOST LIKELY CAUSES:",
+                causes_txt,
+                "",
+                "RECOMMENDED ACTIONS:",
+                actions_txt,
+            ]
+            return "\n".join(lines)
+
+        elif any(w in q for w in ["solution","fix","action","do","should","what now"]):
+            lines = [
+                "[Knowledge Base answer - Ollama timed out]",
+                "",
+                "For: " + str(d["title"]) + " (Risk: " + str(d["risk"]) + ")",
+                "",
+                actions_txt,
+            ]
+            return "\n".join(lines)
+
+        elif any(w in q for w in ["future","predict","forecast","next","will"]):
+            xtemp_val = safe(sensors, "xTemp")
+            lines = [
+                "[Knowledge Base answer - Ollama timed out]",
+                "",
+                "Score: " + f"{score:.4f}" + " (" + status + ") - trend: " + direction,
+                "Temperature: " + f"{xtemp_val:.2f}" + "C (" + trend + ")",
+                "CNN event: " + cnn_event,
+                ("WARNING: Score elevated - anomaly may persist." if score > 0.05
+                 else "Score normal - no anomaly expected."),
+            ]
+            return "\n".join(lines)
+
+        lines = [
+            "[Knowledge Base answer - Ollama timed out]",
+            "",
+            "Status: " + status + " | Score: " + f"{score:.4f}" + " | Cause: " + cause,
+            "Diagnosis: " + str(d["title"]) + " - Risk: " + str(d["risk"]),
+            "",
+            "Tip: Click the diagnose anomaly button for full instant analysis.",
+        ]
+        return "\n".join(lines)
 
 
 def _ollama_models() -> list:
-    """Return list of locally available Ollama model names."""
+    """Return list of locally available Ollama model names (full names preserved)."""
     try:
         r = requests.get("http://localhost:11434/api/tags", timeout=5)
-        return [m["name"].split(":")[0] for m in r.json().get("models", [])]
-    except Exception:
+        models = r.json().get("models", [])
+        # Return BOTH full name and base name so detection works regardless of tag
+        names = []
+        for m in models:
+            full = m["name"]           # e.g. "llava:latest"
+            base = full.split(":")[0]  # e.g. "llava"
+            names.append(full)
+            if base not in names:
+                names.append(base)
+        print(f"[OLLAMA] Available models: {names}")
+        return names
+    except Exception as e:
+        print(f"[OLLAMA] Could not list models: {e}")
         return []
 
 
@@ -821,15 +1296,26 @@ Be technical, specific, and reference actual values from both the image and the 
         print(f"[IMG] Using vision model: {used_vision}")
         try:
             result = _ollama_generate(used_vision, vision_prompt,
-                                      images=[image_b64], timeout=120)
+                                      images=[image_b64], timeout=180)
+            print(f"[IMG] llava result (first 100 chars): {result[:100]!r}")
             if result and not result.startswith("["):
                 return f"[Vision model: {used_vision}]\n\n{result}"
-            # Vision model returned empty/error — log and fall through
-            print(f"[IMG] {used_vision} returned: {result!r} — falling back to llama3")
+            # Vision returned empty — still return it rather than NO_VISION
+            if result:
+                return f"[Vision model: {used_vision}]\n\n{result}"
+            print(f"[IMG] {used_vision} returned empty — falling back")
         except Exception as e:
-            print(f"[IMG] {used_vision} failed: {e} — falling back to llama3")
+            print(f"[IMG] {used_vision} FAILED: {type(e).__name__}: {e}")
+            # llava failed but IS installed — give a partial response
+            return (f"[Vision model: {used_vision} — error: {type(e).__name__}]\n\n"
+                    f"llava is installed but returned an error. Try uploading again.\n\n"
+                    f"LIVE TELEMETRY:\n"
+                    f"  Score: {context.get('anomaly_score',0):.4f} ({context.get('status','?')})\n"
+                    f"  CNN event: {context.get('cnn_event_type','?')}\n"
+                    f"  STA/LTA: {'TRIGGERED' if context.get('stalta_triggered') else 'idle'}")
     else:
         print(f"[IMG] No vision model found in: {available}")
+        print(f"[IMG] Checked candidates: {vision_candidates}")
 
     # ── No vision model: be HONEST, never hallucinate image content ──
     # llama3 cannot see images. Do NOT ask it to describe or guess the image.
@@ -1141,7 +1627,11 @@ def make_chart_seismic_events(events):
 def make_analyzed_image_figure(img_record: dict):
     """Render an analyzed image + its AI analysis text as a matplotlib figure."""
     img_data = base64.b64decode(img_record["image_b64"])
-    img_arr  = plt.imread(io.BytesIO(img_data))
+    # Use PIL instead of plt.imread — handles JPEG, PNG, WebP, any format
+    from PIL import Image as _PILImg
+    import io as _io2
+    pil_img  = _PILImg.open(_io2.BytesIO(img_data)).convert("RGB")
+    img_arr  = np.array(pil_img)
 
     fig = plt.figure(figsize=(10, 4), facecolor=DARK_BG)
     gs  = gridspec.GridSpec(1, 2, width_ratios=[1.4, 1], figure=fig)
@@ -1435,13 +1925,100 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 @app.get("/")
 def serve_dashboard():
-    return FileResponse("dashboard/index.html")
+    from fastapi.responses import FileResponse as FR
+    resp = FR("dashboard/index.html")
+    # Prevent browser caching so updates always load fresh
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"]        = "no-cache"
+    resp.headers["Expires"]       = "0"
+    return resp
+
+
+def explain_with_image(question: str, img_ctx: dict) -> str:
+    """Answer a question about the last analyzed image using llava."""
+    filename  = img_ctx.get("filename", "unknown")
+    analysis  = img_ctx.get("analysis", "")
+    image_b64 = img_ctx.get("image_b64", "")
+    img_type  = img_ctx.get("image_type", "")
+
+    prompt = f"""You are an expert image analyst. An operator uploaded an image called '{filename}' (type: {img_type}).
+
+Previous AI analysis of this image:
+{analysis[:600]}
+
+Operator question: {question}
+
+Answer the question directly based on what the image shows.
+If the image is not related to spacecraft/mission data, answer based on its actual visual content.
+Be specific and direct — if you can identify what's in the image, say so clearly.
+"""
+    try:
+        # Try llava first (can see the image)
+        if image_b64:
+            result = _ollama_generate("llava", prompt, images=[image_b64], timeout=120)
+            if result and not result.startswith("["):
+                return result
+    except Exception:
+        pass
+
+    # Fallback: use existing analysis text to answer
+    try:
+        text_prompt = f"""Based on this image analysis:
+{analysis[:800]}
+
+Answer this question: {question}
+
+Be direct and specific. If the analysis mentions the image content clearly, use that to answer.
+"""
+        result = _ollama_generate("llama3", text_prompt, timeout=60)
+        if result:
+            return "[Based on image analysis]\n\n" + result
+    except Exception:
+        pass
+
+    # Last resort: extract answer from stored analysis
+    if analysis:
+        return "[From stored image analysis]\n\n" + analysis[:600] + "\n\n(To get a direct answer, ensure Ollama is running.)"
+
+    return "No image analysis available. Upload an image first, then ask about it."
+
+
+@app.get("/diagnose")
+def diagnose():
+    """Returns full knowledge base diagnosis for current state."""
+    d = diagnose_anomaly(current_state)
+    m = current_state.get("models", {})
+    return {
+        "diagnosis":        d,
+        "anomaly_score":    current_state.get("anomaly_score", 0),
+        "status":           current_state.get("status", "NORMAL"),
+        "dominant_cause":   m.get("lstm", {}).get("dominant_cause", "unknown"),
+        "event_type":       m.get("cnn",  {}).get("event_type", "none"),
+        "top_sensors":      sorted(
+            m.get("lstm", {}).get("sensor_errors", {}).items(),
+            key=lambda x: x[1], reverse=True
+        )[:3],
+    }
 
 
 @app.get("/ask")
 def ask(question: str):
     model  = select_model(question)
     result = model.run(current_state["sensors"])
+
+    # Detect if question is about the last uploaded image
+    q_lower = question.lower()
+    img_keywords = ["image","photo","picture","dog","person","what is","who is",
+                    "describe","see","show","look","name","identify","this image"]
+    is_image_question = any(k in q_lower for k in img_keywords) and last_image_context
+
+    if is_image_question and last_image_context:
+        # Route to llava for image-aware question
+        answer = explain_with_image(question, last_image_context)
+        return {"response": answer, "model_used": "llava (image context)",
+                "model_output": result, "anomaly_score": current_state["anomaly_score"],
+                "status": current_state["status"]}
+
     answer = explain(result, question, current_state["sensors"])
     return {"response": answer, "model_used": result.get("model"),
             "model_output": result, "anomaly_score": current_state["anomaly_score"],
@@ -1556,7 +2133,25 @@ def report_pdf():
 async def analyze_image(file: UploadFile = File(...),
                         image_type: str = "sensor_chart"):
     contents  = await file.read()
-    image_b64 = base64.b64encode(contents).decode()
+
+    # ── Convert any image format (webp, png, jpg) to JPEG for llava ──
+    # llava requires JPEG or PNG — webp is not supported
+    try:
+        from PIL import Image as PILImage
+        import io as _io
+        img_obj = PILImage.open(_io.BytesIO(contents))
+        # Convert to RGB (handles RGBA, P mode etc.)
+        if img_obj.mode not in ("RGB", "L"):
+            img_obj = img_obj.convert("RGB")
+        jpeg_buf = _io.BytesIO()
+        img_obj.save(jpeg_buf, format="JPEG", quality=92)
+        contents_for_llava = jpeg_buf.getvalue()
+        print(f"[IMG] Converted {file.filename} ({len(contents)//1024}KB) → JPEG ({len(contents_for_llava)//1024}KB)")
+    except Exception as conv_e:
+        print(f"[IMG] Conversion failed ({conv_e}) — using original")
+        contents_for_llava = contents
+
+    image_b64 = base64.b64encode(contents_for_llava).decode()
     m = current_state.get("models", {})
     context = {
         "anomaly_score":     current_state.get("anomaly_score", 0),
@@ -1572,11 +2167,13 @@ async def analyze_image(file: UploadFile = File(...),
     # Detect available models for diagnostics
     available_models = _ollama_models()
     vision_models    = [m2 for m2 in available_models
-                        if any(v in m2 for v in ["llava","moondream","bakllava"])]
-    text_models      = [m2 for m2 in available_models if "llama" in m2]
+                        if any(v in m2.lower() for v in ["llava","moondream","bakllava"])]
+    text_models      = [m2 for m2 in available_models if "llama" in m2.lower()]
 
     print(f"[IMG] File: {file.filename} ({len(contents)/1024:.1f} KB) type={image_type}")
-    print(f"[IMG] Available: {available_models} | Vision: {vision_models}")
+    print(f"[IMG] All models: {available_models}")
+    print(f"[IMG] Vision models found: {vision_models}")
+    print(f"[IMG] Will use vision: {bool(vision_models)}")
 
     analysis = explain_image(image_b64, image_type, context)
 
@@ -1592,6 +2189,15 @@ async def analyze_image(file: UploadFile = File(...),
     analyzed_images.append(record)
     if len(analyzed_images) > 10:
         analyzed_images.pop(0)
+    # Store as last image for follow-up questions in /ask
+    global last_image_context
+    last_image_context = {
+        "filename":   file.filename,
+        "image_type": image_type,
+        "analysis":   analysis,
+        "image_b64":  image_b64,
+        "ts":         record["ts"],
+    }
 
     return {"response": analysis, "analysis": analysis, "image_type": image_type,
             "diagnostics": {
