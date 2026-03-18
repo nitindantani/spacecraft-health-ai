@@ -349,7 +349,21 @@ Each CSV file contains 9 sensor channels from the ILSA seismometer:
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+**Copyright © 2024 Nitin Dantani. All Rights Reserved.**
+
+This project is publicly visible for portfolio and educational purposes only.
+
+**You may NOT:**
+- Use this code in any project (personal, academic, or commercial)
+- Copy, modify, or distribute any part of this codebase
+- Deploy this system without explicit written permission from the author
+
+**You may:**
+- View and read the code
+- Reference this project in academic citations (with attribution)
+
+For permissions, collaborations, or licensing inquiries:
+📧 Contact via [GitHub](https://github.com/nitindantani)
 
 ---
 
