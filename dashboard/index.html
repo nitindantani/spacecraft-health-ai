@@ -3,902 +3,1246 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>ILSA Mission AI</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<title>ILSA Mission Control — Chandrayaan-3</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;600;700;900&family=Exo+2:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
-/* ── THEME TOKENS ── */
-:root { --glow:#00e5ff;--glow2:#00ff9d;--warn:#ffb800;--crit:#ff3c5a;--purple:#bb77ff;--r:10px;--r2:18px;--sb-w:276px; }
-[data-theme="dark"] {
-  --bg:#07090d;--ink:#0d1117;--surface:#131920;--surface2:#1a2330;
-  --rim:rgba(255,255,255,.07);--rim2:rgba(255,255,255,.12);
-  --body:#b8ccd8;--sub:#5a7080;--muted:#2e404e;--white:#e8f4f8;
-  --shadow:0 2px 16px rgba(0,0,0,.5);--sb-bg:#0a0f15;--chat-bg:#07090d;
-  --bubble-ai:#111820;--bubble-user:#1a2330;--input-bg:#131920;--scr:rgba(255,255,255,.08);
+/* ═══════════════════════════════════════════════════
+   TOKENS — NASA/SpaceX Mission Control Palette
+═══════════════════════════════════════════════════ */
+/* accent colors — same in both themes */
+:root {
+  --cyan:    #00d4ff;
+  --cyan2:   #00ffee;
+  --green:   #00ff88;
+  --amber:   #ffaa00;
+  --red:     #ff2244;
+  --purple:  #aa55ff;
+  --mono:    'Share Tech Mono', monospace;
+  --disp:    'Orbitron', sans-serif;
+  --body:    'Exo 2', sans-serif;
+  --glow-c:  0 0 8px rgba(0,212,255,.5);
+  --glow-g:  0 0 8px rgba(0,255,136,.5);
+  --glow-a:  0 0 8px rgba(255,170,0,.5);
+  --glow-r:  0 0 8px rgba(255,34,68,.6);
 }
-[data-theme="light"] {
-  --bg:#f0f4f8;--ink:#ffffff;--surface:#f8fafc;--surface2:#eef2f7;
-  --rim:rgba(0,0,0,.08);--rim2:rgba(0,0,0,.14);
-  --body:#374151;--sub:#6b7280;--muted:#d1d5db;--white:#111827;
-  --shadow:0 2px 16px rgba(0,0,0,.08);--sb-bg:#ffffff;--chat-bg:#f0f4f8;
-  --bubble-ai:#ffffff;--bubble-user:#e8f0fe;--input-bg:#ffffff;--scr:rgba(0,0,0,.1);
+
+/* DARK theme (default) */
+[data-theme="dark"], [data-theme="dark"] body {
+  --void:    #020408;
+  --deep:    #050c14;
+  --panel:   #080f18;
+  --surface: #0c1520;
+  --rim:     rgba(0,200,255,.1);
+  --rim2:    rgba(0,200,255,.2);
+  --rim3:    rgba(0,200,255,.35);
+  --t1:      #c8e8ff;
+  --t2:      #6a8fa8;
+  --t3:      #2a4a60;
+  --t4:      #0d2030;
+  --scanline: repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.15) 2px,rgba(0,0,0,.15) 4px);
+  --radial:  radial-gradient(ellipse 100% 60% at 50% 0%,rgba(0,60,100,.25),transparent 70%);
+  color-scheme: dark;
 }
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;overflow:hidden;}
-body{background:var(--bg);color:var(--body);font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.6;display:flex;flex-direction:column;transition:background .25s,color .25s;}
-[data-theme="dark"] body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.03) 3px,rgba(0,0,0,.03) 4px);}
 
-/* ── TOP BAR ── */
-#topbar{flex-shrink:0;height:52px;background:var(--ink);border-bottom:1px solid var(--rim2);display:flex;align-items:center;padding:0 16px;gap:0;position:relative;z-index:200;box-shadow:var(--shadow);transition:background .25s;}
-.tb-brand{display:flex;align-items:center;gap:9px;margin-right:18px;}
-.tb-logo{width:28px;height:28px;border-radius:7px;border:1.5px solid var(--glow);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:9px;font-weight:800;color:var(--glow);box-shadow:0 0 10px rgba(0,229,255,.18);flex-shrink:0;}
-.tb-name{font-family:'Syne',sans-serif;font-size:13px;font-weight:800;color:var(--white);}
-.tb-tagline{font-family:'DM Mono',monospace;font-size:7.5px;color:var(--sub);letter-spacing:2px;}
-.tb-div{width:1px;height:22px;background:var(--rim2);margin:0 13px;flex-shrink:0;}
-.tb-metric{display:flex;flex-direction:column;gap:1px;flex-shrink:0;}
-.tb-lbl{font-family:'DM Mono',monospace;font-size:7px;color:var(--sub);letter-spacing:2px;}
-.tb-val{font-family:'DM Mono',monospace;font-size:12px;font-weight:500;color:var(--glow2);transition:color .4s;}
-.tb-val.warn{color:var(--warn)}.tb-val.crit{color:var(--crit);animation:blink .4s ease-in-out infinite;}
-.tb-right{margin-left:auto;display:flex;align-items:center;gap:11px;}
-.theme-toggle{display:flex;align-items:center;background:var(--surface);border:1px solid var(--rim2);border-radius:20px;padding:2px;cursor:pointer;}
-.th-opt{padding:3px 9px;border-radius:16px;font-family:'DM Mono',monospace;font-size:9px;color:var(--sub);transition:all .2s;user-select:none;}
-.th-opt.active{background:var(--surface2);color:var(--white);}
-.alert-bell{position:relative;width:32px;height:32px;border-radius:50%;background:var(--surface);border:1px solid var(--rim2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:var(--sub);transition:all .2s;}
-.alert-bell:hover{border-color:rgba(255,184,0,.4);color:var(--warn);}
-.alert-bell.ring{color:var(--warn);border-color:rgba(255,184,0,.4);animation:ring .6s ease-in-out 3;}
-.ab-cnt{position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;background:var(--crit);color:#fff;font-family:'DM Mono',monospace;font-size:8px;display:none;align-items:center;justify-content:center;}
-.status-badge{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;padding:3px 10px;border-radius:20px;background:rgba(0,255,157,.1);color:var(--glow2);border:1px solid rgba(0,255,157,.25);transition:all .4s;}
-.status-badge.warn{background:rgba(255,184,0,.12);color:var(--warn);border-color:rgba(255,184,0,.3);}
-.status-badge.crit{background:rgba(255,60,90,.12);color:var(--crit);border-color:rgba(255,60,90,.3);animation:blink .4s ease-in-out infinite;}
-.ws-dot{width:7px;height:7px;border-radius:50%;background:var(--crit);animation:blink .9s infinite;flex-shrink:0;}
-.ws-dot.live{background:var(--glow2);animation:pulse 2.2s infinite;}
-.tb-clk{font-family:'DM Mono',monospace;font-size:11px;color:var(--sub);letter-spacing:1.5px;}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
-@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,255,157,.4)}50%{opacity:.7;box-shadow:0 0 0 4px transparent}}
-@keyframes ring{0%,100%{transform:rotate(0)}25%{transform:rotate(-18deg)}75%{transform:rotate(18deg)}}
+/* LIGHT theme */
+[data-theme="light"], [data-theme="light"] body {
+  --void:    #eef3f8;
+  --deep:    #dde6f0;
+  --panel:   #e8f0f7;
+  --surface: #f2f7fb;
+  --rim:     rgba(0,130,180,.12);
+  --rim2:    rgba(0,130,180,.22);
+  --rim3:    rgba(0,130,180,.38);
+  --t1:      #0d2030;
+  --t2:      #2a5070;
+  --t3:      #5a8aaa;
+  --t4:      #c8dcea;
+  --scanline: none;
+  --radial:  radial-gradient(ellipse 100% 60% at 50% 0%,rgba(0,130,200,.06),transparent 70%);
+  color-scheme: light;
+}
+/* light overrides for neon — muted versions */
+[data-theme="light"] { --green:#007a40; --amber:#b06000; --red:#cc1133; --purple:#7733cc; }
+[data-theme="light"] .ring-bg { stroke:rgba(0,130,180,.12) !important; }
+[data-theme="light"] .sensor-fill.sf-c { background:linear-gradient(to right,rgba(0,130,200,.3),#0080b0) !important; }
+[data-theme="light"] .sensor-fill.sf-g { background:linear-gradient(to right,rgba(0,130,80,.3),#007a40) !important; }
+[data-theme="light"] .sensor-fill.sf-a { background:linear-gradient(to right,rgba(180,100,0,.3),#b06000) !important; }
+[data-theme="light"] .hbar-fill.hg2    { background:linear-gradient(to right,rgba(0,130,80,.3),#007a40) !important; }
+[data-theme="light"] .hbar-fill.ha2    { background:linear-gradient(to right,rgba(180,100,0,.3),#b06000) !important; }
+[data-theme="light"] .bubble.ai   { background:#dde6f0 !important; border-color:rgba(0,130,180,.2) !important; }
+[data-theme="light"] .bubble.user { background:rgba(0,130,80,.06) !important; border-color:rgba(0,130,80,.2) !important; }
+[data-theme="light"] .mcard       { background:#e8f0f7 !important; border-color:rgba(0,130,180,.15) !important; }
+[data-theme="light"] .sys-card    { background:#e8f0f7 !important; border-color:rgba(0,130,180,.15) !important; }
+[data-theme="light"] body { background-image:var(--radial) !important; }
+[data-theme="light"] #topbar::before { opacity:.5 !important; }
 
-/* ── LAYOUT ── */
-#layout{flex:1;display:flex;overflow:hidden;}
+/* ═══════════════════════════════════════════════════
+   RESET
+═══════════════════════════════════════════════════ */
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html,body { height:100%; overflow:hidden; }
+body {
+  background:var(--void);
+  color:var(--t1);
+  font-family:var(--body);
+  font-size:12px;
+  display:flex;
+  flex-direction:column;
+  background-image:var(--scanline),var(--radial);
+  transition:background .3s,color .3s;
+}
 
-/* ── SIDEBAR ── */
-#sidebar{width:var(--sb-w);background:var(--sb-bg);border-right:1px solid var(--rim2);display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;flex-shrink:0;scrollbar-width:thin;scrollbar-color:var(--scr) transparent;transition:background .25s;}
-#sidebar::-webkit-scrollbar{width:3px;}
-#sidebar::-webkit-scrollbar-thumb{background:var(--scr);border-radius:2px;}
-.sb-sec{padding:11px 13px;border-bottom:1px solid var(--rim);}
-.sb-ttl{font-family:'DM Mono',monospace;font-size:7.5px;letter-spacing:3px;color:var(--sub);text-transform:uppercase;margin-bottom:9px;display:flex;align-items:center;justify-content:space-between;}
-.sb-ttl b{color:var(--glow);font-weight:500;}
+/* ═══════════════════════════════════════════════════
+   TOP BAR — Mission Status
+═══════════════════════════════════════════════════ */
+#topbar {
+  flex-shrink:0;
+  height:48px;
+  background:var(--deep);
+  border-bottom:1px solid var(--rim2);
+  display:flex;
+  align-items:center;
+  padding:0 14px;
+  gap:0;
+  position:relative;
+  z-index:100;
+}
+/* Animated top accent line */
+#topbar::before {
+  content:'';
+  position:absolute;
+  top:0; left:0; right:0;
+  height:2px;
+  background:linear-gradient(90deg,transparent,var(--cyan),var(--cyan2),transparent);
+  animation:scan 4s linear infinite;
+}
+@keyframes scan {
+  0%   { opacity:.4; background-position:0% 0%; }
+  50%  { opacity:1; }
+  100% { opacity:.4; }
+}
 
-/* Ring */
-.ring-wrap{display:flex;align-items:center;gap:11px;margin-bottom:9px;}
-.ring-svg{width:54px;height:54px;flex-shrink:0;}
-.ring-bg{fill:none;stroke:var(--rim2);stroke-width:7;}
-.ring-fg{fill:none;stroke-width:7;stroke-linecap:round;stroke-dasharray:145;transition:stroke-dashoffset .9s ease,stroke .5s;}
-.ring-n{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;line-height:1;color:var(--glow2);}
-.ring-s{font-family:'DM Mono',monospace;font-size:8px;color:var(--sub);letter-spacing:1px;margin-top:2px;}
-.spark-h{height:38px;position:relative;}
+.tb-brand {
+  display:flex; align-items:center; gap:10px;
+  margin-right:20px; flex-shrink:0;
+}
+.tb-logo {
+  width:30px; height:30px; border:1.5px solid var(--cyan);
+  border-radius:4px; display:flex; align-items:center; justify-content:center;
+  font-family:var(--disp); font-size:8px; font-weight:700; color:var(--cyan);
+  box-shadow:var(--glow-c); letter-spacing:1px;
+}
+.tb-name { font-family:var(--disp); font-size:11px; font-weight:700; color:var(--cyan); letter-spacing:3px; }
+.tb-sub  { font-family:var(--mono); font-size:7px; color:var(--t3); letter-spacing:2px; margin-top:1px; }
 
-/* Mini charts */
-.chart-mini{height:64px;position:relative;margin-bottom:3px;}
-.chart-leg{display:flex;gap:8px;flex-wrap:wrap;}
-.chart-leg span{font-family:'DM Mono',monospace;font-size:7.5px;}
+.tb-div { width:1px; height:28px; background:var(--rim2); margin:0 14px; flex-shrink:0; }
+
+/* Status banner */
+#missionBanner {
+  display:flex; align-items:center; gap:10px;
+  padding:5px 16px; border-radius:3px; flex-shrink:0;
+  background:rgba(0,255,136,.08); border:1px solid rgba(0,255,136,.3);
+  transition:all .4s;
+}
+#missionBanner.warn { background:rgba(255,170,0,.1); border-color:rgba(255,170,0,.4); }
+#missionBanner.crit { background:rgba(255,34,68,.12); border-color:rgba(255,34,68,.5); animation:critpulse 1s ease-in-out infinite; }
+@keyframes critpulse { 0%,100%{box-shadow:none} 50%{box-shadow:0 0 20px rgba(255,34,68,.3)} }
+.banner-dot { width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:var(--glow-g); animation:blink 2s ease-in-out infinite; }
+#missionBanner.warn .banner-dot { background:var(--amber); box-shadow:var(--glow-a); animation:blink .8s ease-in-out infinite; }
+#missionBanner.crit .banner-dot { background:var(--red); box-shadow:var(--glow-r); animation:blink .3s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+.banner-text { font-family:var(--disp); font-size:10px; font-weight:700; color:var(--green); letter-spacing:3px; }
+#missionBanner.warn .banner-text { color:var(--amber); }
+#missionBanner.crit .banner-text { color:var(--red); }
+
+/* Top metrics */
+.tb-metrics { display:flex; align-items:center; gap:0; margin-left:16px; }
+.tb-metric {
+  display:flex; flex-direction:column; gap:1px;
+  padding:0 14px; border-right:1px solid var(--rim);
+}
+.tb-metric:last-child { border-right:none; }
+.tb-lbl { font-family:var(--mono); font-size:7px; color:var(--t3); letter-spacing:2px; }
+.tb-val { font-family:var(--mono); font-size:13px; font-weight:500; color:var(--cyan); transition:color .4s; }
+.tb-val.warn { color:var(--amber); }
+.tb-val.crit { color:var(--red); text-shadow:var(--glow-r); }
+.tb-val.ok   { color:var(--green); }
+
+.tb-right { margin-left:auto; display:flex; align-items:center; gap:12px; }
+.ws-indicator { display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:9px; color:var(--t3); }
+.ws-dot { width:6px; height:6px; border-radius:50%; background:var(--red); animation:blink .8s ease-in-out infinite; }
+.ws-dot.live { background:var(--green); box-shadow:var(--glow-g); animation:blink 2s ease-in-out infinite; }
+.tb-clock { font-family:var(--mono); font-size:13px; color:var(--cyan); letter-spacing:2px; }
+
+/* Auth pill */
+.auth-pill { display:flex; align-items:center; gap:7px; background:var(--surface); border:1px solid var(--rim2); border-radius:3px; padding:4px 10px; }
+.auth-avatar { width:20px; height:20px; border-radius:50%; background:linear-gradient(135deg,var(--cyan),var(--cyan2)); display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:8px; color:#000; font-weight:700; flex-shrink:0; }
+.auth-name { font-family:var(--mono); font-size:9px; color:var(--t2); }
+.logout-btn { background:transparent; border:1px solid var(--t3); border-radius:2px; color:var(--t3); font-family:var(--mono); font-size:8px; padding:2px 7px; cursor:pointer; transition:all .2s; letter-spacing:1px; }
+.logout-btn:hover { border-color:var(--red); color:var(--red); }
+
+/* ═══════════════════════════════════════════════════
+   MAIN 3-COLUMN LAYOUT
+═══════════════════════════════════════════════════ */
+#layout {
+  flex:1;
+  display:flex;
+  overflow:hidden;
+  min-height:0;
+}
+
+/* Left panel fixed width */
+#leftPanel { flex:0 0 260px; min-width:180px; max-width:380px; }
+
+/* Center panel grows */
+#centerPanel { flex:1; min-width:200px; overflow:hidden; }
+
+/* Resize handle between center and right */
+#resizeHandle {
+  flex:0 0 5px; cursor:col-resize;
+  background:var(--rim); border-left:1px solid var(--rim2);
+  transition:background .2s;
+  display:flex; align-items:center; justify-content:center;
+  position:relative; z-index:10;
+}
+#resizeHandle:hover, #resizeHandle.dragging { background:var(--cyan); }
+#resizeHandle::after {
+  content:'⋮'; font-size:11px; color:var(--t3);
+  line-height:1; letter-spacing:-2px;
+}
+#resizeHandle:hover::after { color:var(--deep); }
+
+/* Right panel resizable */
+#rightPanel { flex:0 0 320px; min-width:220px; max-width:600px; overflow:hidden; display:flex; flex-direction:column; }
+
+/* Theme toggle in topbar */
+.theme-toggle {
+  display:flex; align-items:center;
+  background:var(--surface); border:1px solid var(--rim2);
+  border-radius:3px; padding:2px; gap:2px; flex-shrink:0;
+}
+.th-opt {
+  padding:3px 9px; border-radius:2px;
+  font-family:var(--mono); font-size:8px; letter-spacing:1px;
+  color:var(--t3); cursor:pointer; transition:all .2s; user-select:none;
+}
+.th-opt.active { background:rgba(0,212,255,.12); color:var(--cyan); }
+[data-theme="light"] .th-opt.active { background:rgba(0,130,200,.1); color:#0070a8; }
+
+/* ═══════════════════════════════════════════════════
+   PANEL SHARED STYLES
+═══════════════════════════════════════════════════ */
+.panel {
+  background:var(--panel);
+  border-right:1px solid var(--rim);
+  display:flex; flex-direction:column;
+  overflow:hidden;
+}
+.panel-header {
+  flex-shrink:0;
+  padding:8px 12px;
+  border-bottom:1px solid var(--rim);
+  display:flex; align-items:center; justify-content:space-between;
+  background:var(--deep);
+}
+.panel-title {
+  font-family:var(--disp); font-size:8px; font-weight:600;
+  color:var(--cyan); letter-spacing:4px;
+  display:flex; align-items:center; gap:7px;
+}
+.panel-title::before {
+  content:''; width:3px; height:12px;
+  background:var(--cyan); box-shadow:var(--glow-c); border-radius:1px;
+}
+.panel-badge {
+  font-family:var(--mono); font-size:7px; color:var(--t3); letter-spacing:2px;
+}
+.panel-body { flex:1; overflow-y:auto; padding:10px; scrollbar-width:thin; scrollbar-color:var(--rim) transparent; }
+.panel-body::-webkit-scrollbar { width:3px; }
+.panel-body::-webkit-scrollbar-thumb { background:var(--rim2); border-radius:2px; }
+
+/* Section inside panel */
+.sec { margin-bottom:14px; }
+.sec-title {
+  font-family:var(--mono); font-size:7.5px; color:var(--t3); letter-spacing:3px;
+  margin-bottom:7px; padding-bottom:4px;
+  border-bottom:1px solid var(--rim); text-transform:uppercase;
+}
+
+/* ═══════════════════════════════════════════════════
+   LEFT PANEL — TELEMETRY
+═══════════════════════════════════════════════════ */
+#leftPanel { border-left:none; }
+
+/* System status cards */
+.sys-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+.sys-card {
+  background:var(--surface); border:1px solid var(--rim);
+  border-radius:3px; padding:8px;
+}
+.sys-card-label { font-family:var(--mono); font-size:7px; color:var(--t3); letter-spacing:2px; margin-bottom:4px; }
+.sys-card-val { font-family:var(--mono); font-size:16px; font-weight:500; line-height:1; }
+.sys-card-sub { font-family:var(--mono); font-size:7px; color:var(--t3); margin-top:2px; }
+.c  { color:var(--cyan); }
+.g  { color:var(--green); }
+.a  { color:var(--amber); }
+.r  { color:var(--red); }
+.p  { color:var(--purple); }
+
+/* Health ring */
+.ring-wrap { display:flex; align-items:center; gap:10px; padding:8px; background:var(--surface); border:1px solid var(--rim); border-radius:3px; margin-bottom:10px; }
+.ring-svg { width:54px; height:54px; flex-shrink:0; }
+.ring-bg  { fill:none; stroke:rgba(0,212,255,.1); stroke-width:7; }
+.ring-fg  { fill:none; stroke-width:7; stroke-linecap:round; stroke-dasharray:145; transition:stroke-dashoffset .9s ease, stroke .5s; }
+.ring-info { flex:1; }
+.ring-num { font-family:var(--disp); font-size:24px; font-weight:900; color:var(--green); line-height:1; }
+.ring-lbl { font-family:var(--mono); font-size:7px; color:var(--t3); letter-spacing:2px; margin-top:2px; }
+.ring-status { font-family:var(--disp); font-size:9px; font-weight:700; color:var(--green); letter-spacing:3px; margin-top:4px; }
+
+/* Sensor bars */
+.sensor-row { margin-bottom:8px; }
+.sensor-hd { display:flex; justify-content:space-between; align-items:center; margin-bottom:3px; }
+.sensor-name { font-family:var(--mono); font-size:8px; color:var(--t2); letter-spacing:1px; }
+.sensor-val  { font-family:var(--mono); font-size:9px; color:var(--cyan); }
+.sensor-track { height:3px; background:var(--t4); border-radius:2px; overflow:hidden; }
+.sensor-fill  { height:100%; border-radius:2px; transition:width .5s ease; }
+.sf-c { background:linear-gradient(to right,rgba(0,212,255,.4),var(--cyan)); box-shadow:0 0 4px rgba(0,212,255,.4); }
+.sf-g { background:linear-gradient(to right,rgba(0,255,136,.4),var(--green)); box-shadow:0 0 4px rgba(0,255,136,.4); }
+.sf-a { background:linear-gradient(to right,rgba(255,170,0,.4),var(--amber)); box-shadow:0 0 4px rgba(255,170,0,.4); }
+.sf-r { background:linear-gradient(to right,rgba(255,34,68,.4),var(--red)); box-shadow:0 0 4px rgba(255,34,68,.4); }
 
 /* Model cards */
-.m-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
-.mcard{background:var(--surface);border:1px solid var(--rim);border-radius:var(--r);padding:7px 8px;transition:border-color .3s;}
-.mcard.flash{animation:mf .5s ease;}
-@keyframes mf{0%{background:rgba(0,229,255,.1)}100%{background:var(--surface)}}
-.mc-name{font-family:'DM Mono',monospace;font-size:7.5px;font-weight:500;letter-spacing:1px;margin-bottom:3px;}
-.mc-val{font-family:'DM Mono',monospace;font-size:9px;color:var(--body);line-height:1.5;}
-.mc-bdg{display:inline-block;font-family:'DM Mono',monospace;font-size:7px;padding:1px 5px;border-radius:3px;margin-top:3px;letter-spacing:1px;}
-.bn{background:rgba(0,255,157,.1);color:var(--glow2);}
-.bw{background:rgba(255,184,0,.12);color:var(--warn);}
-.bc{background:rgba(255,60,90,.12);color:var(--crit);}
-.bp{background:rgba(187,119,255,.12);color:var(--purple);}
+.model-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+.mcard {
+  background:var(--surface); border:1px solid var(--rim);
+  border-radius:3px; padding:8px; transition:border-color .3s;
+}
+.mcard.flash { animation:mflash .4s ease; }
+@keyframes mflash { 0%{background:rgba(0,212,255,.08)} 100%{background:var(--surface)} }
+.mcard-name { font-family:var(--mono); font-size:8px; font-weight:500; letter-spacing:2px; margin-bottom:4px; }
+.mcard-val  { font-family:var(--mono); font-size:9px; color:var(--t2); line-height:1.6; }
+.mcard-badge {
+  display:inline-block; font-family:var(--mono); font-size:7px;
+  padding:1px 6px; border-radius:2px; margin-top:4px; letter-spacing:1px;
+}
+.bn { background:rgba(0,255,136,.1); color:var(--green); border:1px solid rgba(0,255,136,.2); }
+.bw { background:rgba(255,170,0,.1); color:var(--amber); border:1px solid rgba(255,170,0,.25); }
+.bc { background:rgba(255,34,68,.1); color:var(--red); border:1px solid rgba(255,34,68,.25); }
+.bp { background:rgba(170,85,255,.1); color:var(--purple); border:1px solid rgba(170,85,255,.25); }
 
 /* Health bars */
-.hb-row{display:flex;flex-direction:column;gap:5px;}
-.hb-item{display:grid;grid-template-columns:62px 1fr 28px;gap:5px;align-items:center;}
-.hb-lbl{font-family:'DM Mono',monospace;font-size:7.5px;color:var(--sub);}
-.hb-track{height:4px;background:var(--rim2);border-radius:2px;overflow:hidden;}
-.hb-fill{height:100%;border-radius:2px;transition:width .8s ease;}
-.hg{background:linear-gradient(to right,#00cc77,var(--glow2));}
-.ha{background:linear-gradient(to right,#cc8800,var(--warn));}
-.hr2{background:linear-gradient(to right,#cc1133,var(--crit));}
-.hb-pct{font-family:'DM Mono',monospace;font-size:7.5px;text-align:right;}
+.hbar-item { display:grid; grid-template-columns:64px 1fr 28px; gap:6px; align-items:center; margin-bottom:5px; }
+.hbar-lbl { font-family:var(--mono); font-size:7.5px; color:var(--t2); }
+.hbar-track { height:3px; background:var(--t4); border-radius:2px; overflow:hidden; }
+.hbar-fill { height:100%; border-radius:2px; transition:width .7s ease; }
+.hg2 { background:linear-gradient(to right,rgba(0,255,136,.3),var(--green)); }
+.ha2 { background:linear-gradient(to right,rgba(255,170,0,.3),var(--amber)); }
+.hr3 { background:linear-gradient(to right,rgba(255,34,68,.3),var(--red)); }
+.hbar-pct { font-family:var(--mono); font-size:7.5px; text-align:right; }
 
-/* Stats */
-.stat-g{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
-.stat-item{background:var(--surface);border:1px solid var(--rim);border-radius:var(--r);padding:7px 8px;text-align:center;}
-.stat-lbl{font-family:'DM Mono',monospace;font-size:7px;color:var(--sub);letter-spacing:1px;margin-bottom:2px;}
-.stat-val{font-family:'DM Mono',monospace;font-size:15px;font-weight:500;color:var(--glow2);}
+/* ═══════════════════════════════════════════════════
+   CENTER PANEL — CHARTS + EVENTS
+═══════════════════════════════════════════════════ */
+#centerPanel {
+  border-right:1px solid var(--rim);
+  background:var(--void);
+  display:flex; flex-direction:column;
+}
+.chart-section { padding:10px; border-bottom:1px solid var(--rim); flex-shrink:0; }
+.chart-label {
+  font-family:var(--mono); font-size:7.5px; color:var(--t3); letter-spacing:3px;
+  margin-bottom:7px; display:flex; align-items:center; justify-content:space-between;
+}
+.chart-label em { color:var(--cyan); font-style:normal; }
+.chart-wrap { position:relative; }
 
-/* ── CHAT PANEL ── */
-#chatpanel{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--chat-bg);transition:background .25s;}
-#chat{flex:1;overflow-y:auto;padding:18px 0 8px;scroll-behavior:smooth;scrollbar-width:thin;scrollbar-color:var(--scr) transparent;}
-#chat::-webkit-scrollbar{width:3px;}
-#chat::-webkit-scrollbar-thumb{background:var(--scr);border-radius:2px;}
+/* Event feed */
+.event-feed { flex:1; overflow-y:auto; padding:10px; scrollbar-width:thin; scrollbar-color:var(--rim) transparent; }
+.event-feed::-webkit-scrollbar { width:3px; }
+.event-feed::-webkit-scrollbar-thumb { background:var(--rim2); border-radius:2px; }
+.feed-title { font-family:var(--mono); font-size:7.5px; color:var(--t3); letter-spacing:3px; margin-bottom:8px; padding-bottom:5px; border-bottom:1px solid var(--rim); }
+.ev-row {
+  display:grid; grid-template-columns:6px 60px 1fr 70px;
+  gap:8px; align-items:center;
+  padding:5px 0; border-bottom:1px solid rgba(0,200,255,.04);
+  animation:evIn .3s ease;
+}
+@keyframes evIn { from{opacity:0;transform:translateX(-4px)} to{opacity:1;transform:none} }
+.ev-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.ev-dot.n { background:var(--green); box-shadow:var(--glow-g); }
+.ev-dot.w { background:var(--amber); box-shadow:var(--glow-a); }
+.ev-dot.c { background:var(--red); box-shadow:var(--glow-r); }
+.ev-dot.s { background:var(--purple); }
+.ev-time { font-family:var(--mono); font-size:8px; color:var(--t3); }
+.ev-msg  { font-family:var(--mono); font-size:8.5px; color:var(--t1); }
+.ev-src  { font-family:var(--mono); font-size:7.5px; color:var(--t3); text-align:right; }
+
+/* Alert banner */
+.alert-bar {
+  margin:0; padding:7px 14px;
+  background:rgba(255,34,68,.08); border-bottom:1px solid rgba(255,34,68,.2);
+  font-family:var(--mono); font-size:9px; color:var(--red);
+  display:none; align-items:center; gap:8px;
+  animation:alertIn .3s ease;
+}
+@keyframes alertIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:none} }
+.alert-bar.show { display:flex; }
+.alert-icon { font-size:11px; animation:blink .4s ease-in-out infinite; }
+
+/* ═══════════════════════════════════════════════════
+   RIGHT PANEL — AI CHAT
+═══════════════════════════════════════════════════ */
+#rightPanel { border-right:none; }
+#chatpanel { flex:1; display:flex; flex-direction:column; overflow:hidden; min-height:0; }
+#chat { flex:1; overflow-y:auto; padding:10px; scrollbar-width:thin; scrollbar-color:var(--rim) transparent; }
+#chat::-webkit-scrollbar { width:3px; }
+#chat::-webkit-scrollbar-thumb { background:var(--rim2); border-radius:2px; }
 
 /* Messages */
-.msg-row{display:flex;padding:5px 18px;gap:10px;animation:mi .28s cubic-bezier(.2,.8,.3,1) both;}
-@keyframes mi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.msg-row.user{flex-direction:row-reverse;}
-.avatar{width:30px;height:30px;border-radius:50%;flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;}
-.avatar.ai{background:linear-gradient(135deg,#001a22,#002a35);border:1.5px solid rgba(0,229,255,.25);color:var(--glow);font-family:'Syne',sans-serif;font-size:8px;letter-spacing:1px;}
-.avatar.user{background:var(--surface2);border:1.5px solid var(--rim2);color:var(--sub);}
-.bwrap{max-width:620px;display:flex;flex-direction:column;gap:3px;}
-.msg-row.user .bwrap{align-items:flex-end;}
-.bubble{border-radius:var(--r2);padding:11px 15px;font-size:13.5px;line-height:1.65;transition:background .25s;}
-.bubble.ai{background:var(--bubble-ai);border:1px solid var(--rim);color:var(--body);border-bottom-left-radius:4px;}
-.bubble.user{background:var(--bubble-user);border:1px solid var(--rim2);color:var(--white);border-bottom-right-radius:4px;}
-.bubble.ai code{font-family:'DM Mono',monospace;font-size:11.5px;background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.15);padding:1px 6px;border-radius:4px;color:var(--glow);}
-.bubble.ai strong{color:var(--white);}
-/* Alert bubbles */
-.bubble.acrit{background:rgba(255,60,90,.08);border:1px solid rgba(255,60,90,.25);color:var(--body);animation:ap .4s cubic-bezier(.2,.8,.3,1) both;}
-.bubble.awarn{background:rgba(255,184,0,.07);border:1px solid rgba(255,184,0,.22);color:var(--body);animation:ap .4s ease both;}
-.bubble.aok{background:rgba(0,255,157,.06);border:1px solid rgba(0,255,157,.18);color:var(--body);animation:ap .4s ease both;}
-@keyframes ap{from{opacity:0;transform:scale(.95) translateY(6px)}to{opacity:1;transform:none}}
-/* Typing */
-.bubble.typing{background:var(--surface);border:1px solid var(--rim);padding:12px 15px;display:flex;align-items:center;gap:5px;}
-.td{width:5px;height:5px;border-radius:50%;background:var(--sub);animation:td 1.3s ease-in-out infinite;}
-.td:nth-child(2){animation-delay:.2s}.td:nth-child(3){animation-delay:.4s}
-@keyframes td{0%,80%,100%{transform:scale(1);opacity:.4}40%{transform:scale(1.3);opacity:1}}
+.msg-row { display:flex; padding:4px 0; gap:8px; animation:msgIn .25s ease; }
+@keyframes msgIn { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
+.msg-row.user { flex-direction:row-reverse; }
+.avatar {
+  width:24px; height:24px; border-radius:3px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:7px; font-weight:500;
+  margin-top:2px;
+}
+.avatar.ai { background:rgba(0,212,255,.1); border:1px solid var(--rim2); color:var(--cyan); }
+.avatar.user { background:rgba(0,255,136,.08); border:1px solid rgba(0,255,136,.2); color:var(--green); }
+.bwrap { max-width:100%; display:flex; flex-direction:column; gap:2px; flex:1; min-width:0; }
+.msg-row.user .bwrap { align-items:flex-end; }
+.bubble {
+  border-radius:4px; padding:8px 10px;
+  font-family:var(--mono); font-size:9.5px; line-height:1.7;
+  max-width:100%; word-break:break-word;
+}
+.bubble.ai { background:var(--surface); border:1px solid var(--rim); color:var(--t1); border-bottom-left-radius:1px; }
+.bubble.user { background:rgba(0,255,136,.06); border:1px solid rgba(0,255,136,.15); color:var(--t1); border-bottom-right-radius:1px; }
+.bubble.ai code { color:var(--cyan); background:rgba(0,212,255,.08); padding:1px 5px; border-radius:2px; font-size:9px; }
+.bubble.ai strong { color:var(--t1); }
+.bubble.acrit { background:rgba(255,34,68,.08); border:1px solid rgba(255,34,68,.2); color:var(--t1); }
+.bubble.awarn { background:rgba(255,170,0,.07); border:1px solid rgba(255,170,0,.2); color:var(--t1); }
+.bubble.aok   { background:rgba(0,255,136,.06); border:1px solid rgba(0,255,136,.15); color:var(--t1); }
+.bubble.typing { display:flex; align-items:center; gap:4px; padding:10px 12px; }
+.td { width:5px; height:5px; border-radius:50%; background:var(--t3); animation:td 1.2s ease-in-out infinite; }
+.td:nth-child(2){animation-delay:.2s} .td:nth-child(3){animation-delay:.4s}
+@keyframes td { 0%,80%,100%{transform:scale(1);opacity:.3} 40%{transform:scale(1.3);opacity:1} }
+.mts { font-family:var(--mono); font-size:7px; color:var(--t3); padding:0 2px; }
+.msg-row.user .mts { text-align:right; }
+
 /* Chart bubble */
-.bubble.cb{background:var(--ink);border:1px solid var(--rim2);padding:14px;width:min(600px,100%);}
-.cb-title{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:2.5px;color:var(--sub);margin-bottom:9px;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between;}
-.cb-title em{color:var(--glow);font-style:normal;}
-.ch-wrap{position:relative;height:148px;}
-.ch-wrap.tall{height:195px;}
+.bubble.cb { background:var(--deep); border:1px solid var(--rim2); padding:10px; width:100%; }
+.cb-title { font-family:var(--mono); font-size:7.5px; color:var(--t3); letter-spacing:2px; margin-bottom:8px; text-transform:uppercase; }
+.ch-wrap { position:relative; height:120px; }
+
 /* Card bubble */
-.bubble.cardb{background:var(--ink);border:1px solid var(--rim2);padding:15px 17px;width:min(460px,100%);}
-.card-g{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:9px;}
-.kv{background:var(--surface);border:1px solid var(--rim);border-radius:var(--r);padding:8px 10px;}
-.kv-l{font-family:'DM Mono',monospace;font-size:7.5px;color:var(--sub);letter-spacing:2px;margin-bottom:3px;}
-.kv-v{font-family:'DM Mono',monospace;font-size:14px;font-weight:500;}
-.ev-list{display:flex;flex-direction:column;gap:5px;margin-top:8px;}
-.ev-item{background:var(--surface);border:1px solid var(--rim);border-radius:var(--r);padding:8px 10px;font-family:'DM Mono',monospace;font-size:11px;line-height:1.5;}
-.mts{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);padding:0 4px;}
-.msg-row.user .mts{text-align:right;}
-hr.bhr{border:none;border-top:1px solid var(--rim);margin:8px 0;}
+.bubble.cardb { background:var(--deep); border:1px solid var(--rim2); padding:12px; width:100%; }
+.card-g { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:8px; }
+.kv { background:var(--surface); border:1px solid var(--rim); border-radius:3px; padding:7px 9px; }
+.kv-l { font-family:var(--mono); font-size:7px; color:var(--t3); letter-spacing:2px; margin-bottom:3px; }
+.kv-v { font-family:var(--mono); font-size:14px; font-weight:500; }
 
-/* ── INPUT BAR ── */
-#inputbar{flex-shrink:0;background:var(--ink);border-top:1px solid var(--rim2);padding:11px 16px 15px;transition:background .25s;}
-.sugs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;}
-.sug{font-family:'DM Mono',monospace;font-size:10px;color:var(--sub);background:var(--surface);border:1px solid var(--rim);border-radius:20px;padding:3px 10px;cursor:pointer;transition:all .2s;white-space:nowrap;user-select:none;}
-.sug:hover{color:var(--glow);border-color:rgba(0,229,255,.3);background:rgba(0,229,255,.05);}
-.input-row{display:flex;align-items:flex-end;gap:8px;}
-#msgInput{flex:1;background:var(--input-bg);border:1px solid var(--rim2);border-radius:var(--r2);color:var(--white);font-family:'DM Sans',sans-serif;font-size:13.5px;padding:10px 15px;outline:none;resize:none;min-height:43px;max-height:125px;overflow-y:auto;line-height:1.5;scrollbar-width:none;transition:border-color .2s,box-shadow .2s;}
-#msgInput::-webkit-scrollbar{display:none;}
-#msgInput:focus{border-color:rgba(0,229,255,.4);box-shadow:0 0 0 3px rgba(0,229,255,.06);}
-#msgInput::placeholder{color:var(--sub);}
-#imgBtn{width:36px;height:36px;border-radius:50%;background:transparent;border:1px solid var(--rim2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--sub);transition:all .2s;}
-#imgBtn:hover{border-color:rgba(0,229,255,.3);color:var(--glow);}
-#sendBtn{width:44px;height:44px;border-radius:50%;background:var(--glow);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 14px rgba(0,229,255,.22);transition:all .2s;}
-#sendBtn:hover{background:#33eeff;box-shadow:0 0 22px rgba(0,229,255,.4);transform:scale(1.06);}
-#sendBtn:active{transform:scale(.95);}
-#sendBtn:disabled{background:var(--sub);box-shadow:none;cursor:not-allowed;}
-.hint{margin-top:5px;font-family:'DM Mono',monospace;font-size:8.5px;color:var(--muted);text-align:center;letter-spacing:1px;}
+/* Input bar */
+#inputbar {
+  flex-shrink:0; background:var(--deep);
+  border-top:1px solid var(--rim2); padding:8px 10px;
+}
+.sugs { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:7px; }
+.sug {
+  font-family:var(--mono); font-size:8px; color:var(--t3);
+  background:var(--surface); border:1px solid var(--rim);
+  border-radius:2px; padding:3px 8px; cursor:pointer; transition:all .2s;
+  white-space:nowrap; user-select:none; letter-spacing:1px;
+}
+.sug:hover { color:var(--cyan); border-color:var(--rim2); background:rgba(0,212,255,.05); }
+.input-row { display:flex; align-items:flex-end; gap:7px; }
+#msgInput {
+  flex:1; background:var(--surface); border:1px solid var(--rim2);
+  border-radius:3px; color:var(--t1); font-family:var(--mono); font-size:10px;
+  padding:8px 11px; outline:none; resize:none;
+  min-height:34px; max-height:100px; overflow-y:auto; line-height:1.5;
+  scrollbar-width:none; transition:border-color .2s;
+}
+#msgInput::-webkit-scrollbar { display:none; }
+#msgInput:focus { border-color:var(--rim3); box-shadow:0 0 8px rgba(0,212,255,.1); }
+#msgInput::placeholder { color:var(--t3); }
+#imgBtn {
+  width:32px; height:32px; border-radius:3px; background:transparent;
+  border:1px solid var(--rim2); cursor:pointer; display:flex; align-items:center;
+  justify-content:center; color:var(--t3); transition:all .2s; flex-shrink:0;
+}
+#imgBtn:hover { border-color:var(--cyan); color:var(--cyan); }
+#sendBtn {
+  width:32px; height:32px; border-radius:3px; background:rgba(0,212,255,.12);
+  border:1px solid var(--rim3); cursor:pointer; display:flex; align-items:center;
+  justify-content:center; flex-shrink:0; color:var(--cyan); transition:all .2s;
+}
+#sendBtn:hover { background:rgba(0,212,255,.2); box-shadow:var(--glow-c); }
+#sendBtn:active { transform:scale(.95); }
+#sendBtn:disabled { opacity:.3; cursor:not-allowed; }
 
-/* ── WELCOME ── */
-#welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;padding:32px 18px;}
-#welcome.hidden{display:none;}
-.wc-icon{width:50px;height:50px;border-radius:13px;background:linear-gradient(135deg,#001a22,#002535);border:1.5px solid rgba(0,229,255,.3);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:10px;font-weight:800;color:var(--glow);box-shadow:0 0 24px rgba(0,229,255,.1);margin-bottom:3px;}
-.wc-title{font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--white);}
-.wc-sub{font-size:13px;color:var(--sub);text-align:center;max-width:320px;line-height:1.6;}
-.wc-chips{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-top:7px;}
-.wc-chip{font-family:'DM Mono',monospace;font-size:10px;color:var(--body);background:var(--surface);border:1px solid var(--rim2);border-radius:20px;padding:6px 13px;cursor:pointer;transition:all .2s;}
-.wc-chip:hover{color:var(--glow);border-color:rgba(0,229,255,.35);transform:translateY(-1px);}
+/* Welcome */
+#welcome { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:20px; }
+#welcome.hidden { display:none; }
+.wc-icon { font-family:var(--disp); font-size:11px; font-weight:700; color:var(--cyan); letter-spacing:3px; border:1px solid var(--rim2); padding:8px 14px; border-radius:3px; box-shadow:var(--glow-c); }
+.wc-title { font-family:var(--disp); font-size:13px; font-weight:700; color:var(--t1); letter-spacing:2px; text-align:center; }
+.wc-sub { font-family:var(--mono); font-size:8.5px; color:var(--t3); text-align:center; line-height:1.7; }
+.wc-chips { display:flex; flex-wrap:wrap; gap:5px; justify-content:center; margin-top:6px; }
+.wc-chip { font-family:var(--mono); font-size:8px; color:var(--t2); background:var(--surface); border:1px solid var(--rim); border-radius:2px; padding:4px 9px; cursor:pointer; transition:all .2s; letter-spacing:1px; }
+.wc-chip:hover { color:var(--cyan); border-color:var(--rim2); }
 
-/* ── ALERT TOASTS ── */
-#toasts{position:fixed;top:60px;right:14px;z-index:500;display:flex;flex-direction:column;gap:6px;pointer-events:none;}
-.toast{background:var(--surface2);border:1px solid var(--rim2);border-radius:var(--r);padding:9px 13px;font-family:'DM Mono',monospace;font-size:11px;box-shadow:0 4px 28px rgba(0,0,0,.45);pointer-events:all;animation:ti .3s ease both;max-width:270px;}
-.toast.crit{border-color:rgba(255,60,90,.4);}
-.toast.warn{border-color:rgba(255,184,0,.35);}
-.toast.ok{border-color:rgba(0,255,157,.3);}
-@keyframes ti{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
+/* Diagnose card */
+.diag-card { background:var(--deep); border:1px solid var(--rim2); border-radius:3px; overflow:hidden; width:100%; }
+.diag-hd { padding:10px 12px; border-bottom:1px solid var(--rim); background:rgba(0,212,255,.04); }
+.diag-title { font-family:var(--disp); font-size:9px; font-weight:700; color:var(--cyan); letter-spacing:2px; margin-bottom:3px; }
+.diag-badges { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:5px; }
+.diag-body { padding:10px 12px; }
+.diag-section { margin-bottom:10px; }
+.diag-sec-lbl { font-family:var(--mono); font-size:7px; letter-spacing:2px; color:var(--t3); margin-bottom:5px; }
+.diag-item { display:flex; gap:7px; margin:3px 0; font-family:var(--mono); font-size:8.5px; line-height:1.6; }
+.diag-arrow { color:var(--cyan); flex-shrink:0; }
+.diag-arrow.r { color:var(--red); }
+.sensor-bar-wrap { margin:3px 0; }
+.sensor-bar-hd { display:flex; justify-content:space-between; font-family:var(--mono); font-size:8px; margin-bottom:2px; }
+.sensor-bar-track { height:3px; background:var(--t4); border-radius:2px; }
+.sensor-bar-fill { height:100%; background:var(--amber); border-radius:2px; transition:width .5s; }
+
+hr.bhr { border:none; border-top:1px solid var(--rim); margin:8px 0; }
 </style>
 </head>
 <body>
 
-<div id="toasts"></div>
 <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleImg(event)">
 
 <!-- ══ TOP BAR ══ -->
 <div id="topbar">
   <div class="tb-brand">
-    <div class="tb-logo">AI</div>
-    <div><div class="tb-name">ILSA Mission AI</div><div class="tb-tagline">CHANDRAYAAN-3 · CH3-ILSA</div></div>
+    <div class="tb-logo">ILSA</div>
+    <div>
+      <div class="tb-name">MISSION CONTROL</div>
+      <div class="tb-sub">CHANDRAYAAN-3 · ISRO · CH3-ILSA</div>
+    </div>
   </div>
-  <div class="tb-div"></div>
-  <div class="tb-metric"><div class="tb-lbl">SCORE</div><div class="tb-val" id="tb_score">—</div></div>
-  <div class="tb-div"></div>
-  <div class="tb-metric"><div class="tb-lbl">STA/LTA</div><div class="tb-val" id="tb_stalta">—</div></div>
-  <div class="tb-div"></div>
-  <div class="tb-metric"><div class="tb-lbl">CNN EVENT</div><div class="tb-val" id="tb_event" style="font-size:10px">—</div></div>
-  <div class="tb-div"></div>
-  <div class="tb-metric"><div class="tb-lbl">TREND</div><div class="tb-val" id="tb_trend">—</div></div>
-  <div class="tb-div"></div>
-  <div class="tb-metric"><div class="tb-lbl">PACKETS</div><div class="tb-val" id="tb_pkts" style="color:var(--sub)">0</div></div>
+
+  <div id="missionBanner">
+    <div class="banner-dot"></div>
+    <div class="banner-text" id="bannerText">ALL SYSTEMS NOMINAL</div>
+  </div>
+
+  <div class="tb-metrics">
+    <div class="tb-metric"><div class="tb-lbl">ANOMALY</div><div class="tb-val ok" id="tb_score">—</div></div>
+    <div class="tb-metric"><div class="tb-lbl">STA/LTA</div><div class="tb-val" id="tb_stalta">—</div></div>
+    <div class="tb-metric"><div class="tb-lbl">CNN EVENT</div><div class="tb-val" id="tb_event" style="font-size:9px">—</div></div>
+    <div class="tb-metric"><div class="tb-lbl">TREND</div><div class="tb-val" id="tb_trend">—</div></div>
+    <div class="tb-metric"><div class="tb-lbl">PACKETS</div><div class="tb-val" style="color:var(--t2)" id="tb_pkts">0</div></div>
+  </div>
+
   <div class="tb-right">
     <div class="theme-toggle">
-      <div class="th-opt" data-t="light" onclick="setTheme('light')">☀</div>
-      <div class="th-opt active" data-t="dark" onclick="setTheme('dark')">◑</div>
-      <div class="th-opt" data-t="auto" onclick="setTheme('auto')">⚙</div>
+      <div class="th-opt active" data-t="dark"  onclick="setTheme('dark')">◑ DARK</div>
+      <div class="th-opt"        data-t="light" onclick="setTheme('light')">☀ LIGHT</div>
     </div>
-    <div class="alert-bell" id="ab" onclick="clearAlerts()" title="Click to clear">🔔<div class="ab-cnt" id="ab_cnt">0</div></div>
-    <div class="status-badge" id="tb_badge">AWAITING</div>
-    <div class="ws-dot" id="ws_dot"></div>
-    <div class="tb-clk" id="tb_clk">--:--:--</div>
+    <div class="auth-pill" id="authPill" style="display:none">
+      <div class="auth-avatar" id="authAvatar">?</div>
+      <div class="auth-name" id="authName">—</div>
+      <button class="logout-btn" onclick="doLogout()">LOGOUT</button>
+    </div>
+    <div class="ws-indicator">
+      <div class="ws-dot" id="wsDot"></div>
+      <span id="wsLabel">CONNECTING</span>
+    </div>
+    <div class="tb-clock" id="tbClock">--:--:--</div>
   </div>
 </div>
 
-<!-- ══ LAYOUT ══ -->
+<!-- ══ ALERT BAR ══ -->
+<div class="alert-bar" id="alertBar">
+  <span class="alert-icon">⚠</span>
+  <span id="alertMsg">—</span>
+</div>
+
+<!-- ══ MAIN LAYOUT ══ -->
 <div id="layout">
 
-  <!-- SIDEBAR -->
-  <div id="sidebar">
+  <!-- ════ LEFT — TELEMETRY ════ -->
+  <div class="panel" id="leftPanel">
+    <div class="panel-header">
+      <div class="panel-title">TELEMETRY</div>
+      <div class="panel-badge" id="modelReady">LOADING…</div>
+    </div>
+    <div class="panel-body">
 
-    <!-- 1. Score ring + sparkline -->
-    <div class="sb-sec">
-      <div class="sb-ttl">ANOMALY SCORE <b id="sb_stlbl">NOMINAL</b></div>
-      <div class="ring-wrap">
-        <svg class="ring-svg" viewBox="0 0 54 54">
-          <circle class="ring-bg" cx="27" cy="27" r="22"/>
-          <circle class="ring-fg" id="rfg" cx="27" cy="27" r="22" stroke="var(--glow2)"
-            style="stroke-dashoffset:34;transform:rotate(-90deg);transform-origin:50% 50%"/>
-        </svg>
-        <div><div class="ring-n" id="ring_n">—</div><div class="ring-s" id="ring_s">awaiting…</div></div>
+      <!-- Health ring -->
+      <div class="sec">
+        <div class="ring-wrap">
+          <svg class="ring-svg" viewBox="0 0 54 54">
+            <circle class="ring-bg" cx="27" cy="27" r="22"/>
+            <circle class="ring-fg" id="ringFg" cx="27" cy="27" r="22" stroke="var(--green)"
+              style="stroke-dashoffset:34;transform:rotate(-90deg);transform-origin:50% 50%"/>
+          </svg>
+          <div class="ring-info">
+            <div class="ring-num" id="ringNum">—</div>
+            <div class="ring-lbl">HEALTH INDEX</div>
+            <div class="ring-status" id="ringStatus">AWAITING</div>
+          </div>
+        </div>
       </div>
-      <div class="spark-h"><canvas id="sparkC"></canvas></div>
-    </div>
 
-    <!-- 2. Temperature -->
-    <div class="sb-sec">
-      <div class="sb-ttl">TEMPERATURE</div>
-      <div class="chart-mini"><canvas id="tempC"></canvas></div>
-      <div class="chart-leg">
-        <span style="color:#00e5ff">─ xT</span><span style="color:#00ff9d">─ yT</span>
-        <span style="color:#ffb800">─ zT</span><span style="color:#bb77ff">╌ pred</span>
+      <!-- Session stats -->
+      <div class="sec">
+        <div class="sec-title">SESSION STATS</div>
+        <div class="sys-grid">
+          <div class="sys-card"><div class="sys-card-label">PACKETS</div><div class="sys-card-val c" id="st_pkts">0</div></div>
+          <div class="sys-card"><div class="sys-card-label">SEISMIC</div><div class="sys-card-val p" id="st_seis">0</div></div>
+          <div class="sys-card"><div class="sys-card-label">CRITICALS</div><div class="sys-card-val r" id="st_crit">0</div></div>
+          <div class="sys-card"><div class="sys-card-label">WARNINGS</div><div class="sys-card-val a" id="st_warn">0</div></div>
+        </div>
       </div>
-    </div>
 
-    <!-- 3. Acceleration -->
-    <div class="sb-sec">
-      <div class="sb-ttl">ACCELERATION</div>
-      <div class="chart-mini"><canvas id="accelC"></canvas></div>
-      <div class="chart-leg"><span style="color:#00e5ff">─ Fine Z</span><span style="color:#ff3c5a">╌ RMS</span></div>
-    </div>
-
-    <!-- 4. STA/LTA -->
-    <div class="sb-sec">
-      <div class="sb-ttl">STA/LTA SEISMIC <b id="sb_stlbl2" style="color:var(--sub)">IDLE</b></div>
-      <div class="chart-mini"><canvas id="staltaC"></canvas></div>
-      <div style="margin-top:5px;font-family:'DM Mono',monospace;font-size:8.5px;color:var(--sub)">
-        Events: <span id="sb_evc" style="color:var(--purple)">0</span>
-        &nbsp;·&nbsp; Last: <span id="sb_lev" style="color:var(--purple)">—</span>
+      <!-- Temperature sensors -->
+      <div class="sec">
+        <div class="sec-title">TEMPERATURE SENSORS</div>
+        <div class="sensor-row"><div class="sensor-hd"><span class="sensor-name">xTEMP</span><span class="sensor-val c" id="sv_xt">—</span></div><div class="sensor-track"><div class="sensor-fill sf-c" id="sb_xt" style="width:50%"></div></div></div>
+        <div class="sensor-row"><div class="sensor-hd"><span class="sensor-name">yTEMP</span><span class="sensor-val g" id="sv_yt">—</span></div><div class="sensor-track"><div class="sensor-fill sf-g" id="sb_yt" style="width:50%"></div></div></div>
+        <div class="sensor-row"><div class="sensor-hd"><span class="sensor-name">zTEMP</span><span class="sensor-val a" id="sv_zt">—</span></div><div class="sensor-track"><div class="sensor-fill sf-a" id="sb_zt" style="width:50%"></div></div></div>
       </div>
-    </div>
 
-    <!-- 5. Model outputs -->
-    <div class="sb-sec">
-      <div class="sb-ttl">4 MODEL OUTPUTS</div>
-      <div class="m-grid">
-        <div class="mcard" id="mc_l"><div class="mc-name" style="color:#00e5ff">LSTM</div><div class="mc-val" id="mv_l">—</div><div class="mc-bdg bn" id="mb_l">NORMAL</div></div>
-        <div class="mcard" id="mc_c"><div class="mc-name" style="color:#00ff9d">CNN</div><div class="mc-val" id="mv_c">—</div><div class="mc-bdg bn" id="mb_c">NORMAL</div></div>
+      <!-- Acceleration -->
+      <div class="sec">
+        <div class="sec-title">ACCELERATION · FINE</div>
+        <div class="sensor-row"><div class="sensor-hd"><span class="sensor-name">FINE X</span><span class="sensor-val c" id="sv_fx">—</span></div><div class="sensor-track"><div class="sensor-fill sf-c" id="sb_fx" style="width:50%"></div></div></div>
+        <div class="sensor-row"><div class="sensor-hd"><span class="sensor-name">FINE Y</span><span class="sensor-val g" id="sv_fy">—</span></div><div class="sensor-track"><div class="sensor-fill sf-g" id="sb_fy" style="width:50%"></div></div></div>
+        <div class="sensor-row"><div class="sensor-hd"><span class="sensor-name">FINE Z</span><span class="sensor-val a" id="sv_fz">—</span></div><div class="sensor-track"><div class="sensor-fill sf-a" id="sb_fz" style="width:50%"></div></div></div>
       </div>
-      <div class="m-grid" style="margin-top:5px">
-        <div class="mcard" id="mc_t"><div class="mc-name" style="color:#ffb800">TRANS</div><div class="mc-val" id="mv_t">—</div><div class="mc-bdg bn" id="mb_t">STABLE</div></div>
-        <div class="mcard" id="mc_g"><div class="mc-name" style="color:#bb77ff">GNN</div><div class="mc-val" id="mv_g">—</div><div class="mc-bdg bp" id="mb_g">NOMINAL</div></div>
+
+      <!-- 4 Model outputs -->
+      <div class="sec">
+        <div class="sec-title">AI MODEL OUTPUTS</div>
+        <div class="model-grid">
+          <div class="mcard" id="mc_l"><div class="mcard-name c">LSTM</div><div class="mcard-val" id="mv_l">—</div><div class="mcard-badge bn" id="mb_l">NORMAL</div></div>
+          <div class="mcard" id="mc_c"><div class="mcard-name g">CNN</div><div class="mcard-val" id="mv_c">—</div><div class="mcard-badge bn" id="mb_c">NORMAL</div></div>
+          <div class="mcard" id="mc_t"><div class="mcard-name a">TRANS</div><div class="mcard-val" id="mv_t">—</div><div class="mcard-badge bn" id="mb_t">STABLE</div></div>
+          <div class="mcard" id="mc_g"><div class="mcard-name p">GNN</div><div class="mcard-val" id="mv_g">—</div><div class="mcard-badge bp" id="mb_g">NOMINAL</div></div>
+        </div>
       </div>
-    </div>
 
-    <!-- 6. Health bars -->
-    <div class="sb-sec">
-      <div class="sb-ttl">SUBSYSTEM HEALTH</div>
-      <div class="hb-row" id="hbars"></div>
-    </div>
-
-    <!-- 7. Session stats -->
-    <div class="sb-sec">
-      <div class="sb-ttl">SESSION STATS</div>
-      <div class="stat-g">
-        <div class="stat-item"><div class="stat-lbl">PACKETS</div><div class="stat-val" id="st_p">0</div></div>
-        <div class="stat-item"><div class="stat-lbl">SEISMIC</div><div class="stat-val" id="st_s" style="color:var(--purple)">0</div></div>
-        <div class="stat-item"><div class="stat-lbl">CRITICALS</div><div class="stat-val" id="st_c" style="color:var(--crit)">0</div></div>
-        <div class="stat-item"><div class="stat-lbl">WARNINGS</div><div class="stat-val" id="st_w" style="color:var(--warn)">0</div></div>
+      <!-- Subsystem health -->
+      <div class="sec">
+        <div class="sec-title">SUBSYSTEM HEALTH</div>
+        <div id="hbars"></div>
       </div>
-    </div>
 
+    </div>
   </div>
 
-  <!-- CHAT PANEL -->
-  <div id="chatpanel">
-    <div id="chat">
-      <div id="welcome">
-        <div class="wc-icon">AI</div>
-        <div class="wc-title">ILSA Mission AI</div>
-        <div class="wc-sub">Ask anything — I'll show live graphs, seismic events, model analysis, or generate reports right here in chat.</div>
-        <div class="wc-chips">
-          <div class="wc-chip" onclick="send('Show temperature graph')">📈 temperature</div>
-          <div class="wc-chip" onclick="send('Any anomalies right now?')">🔍 anomaly check</div>
-          <div class="wc-chip" onclick="send('Plot seismic events')">🌑 seismic events</div>
-          <div class="wc-chip" onclick="send('Mission health summary')">🛰 health summary</div>
-          <div class="wc-chip" onclick="send('Show anomaly score history')">📊 score history</div>
-          <div class="wc-chip" onclick="send('Generate PDF report')">📄 PDF report</div>
+  <!-- ════ CENTER — CHARTS + EVENTS ════ -->
+  <div id="centerPanel">
+
+    <!-- Anomaly score chart -->
+    <div class="chart-section" style="height:160px;">
+      <div class="chart-label">ANOMALY SCORE HISTORY <em>LSTM · REAL-TIME</em></div>
+      <div class="chart-wrap" style="height:120px;"><canvas id="scoreChart"></canvas></div>
+    </div>
+
+    <!-- STA/LTA seismic chart -->
+    <div class="chart-section" style="height:140px;">
+      <div class="chart-label">STA/LTA SEISMIC DETECTOR <em>trigger: 3.0</em></div>
+      <div class="chart-wrap" style="height:100px;"><canvas id="staltaChart"></canvas></div>
+    </div>
+
+    <!-- Temperature chart -->
+    <div class="chart-section" style="height:140px;">
+      <div class="chart-label">TEMPERATURE · xT / yT / zT <em>+ TRANSFORMER PREDICTION</em></div>
+      <div class="chart-wrap" style="height:100px;"><canvas id="tempChart"></canvas></div>
+    </div>
+
+    <!-- Event feed -->
+    <div class="event-feed">
+      <div class="feed-title">ANOMALY EVENT LOG · REAL-TIME</div>
+      <div id="evFeed">
+        <div class="ev-row">
+          <div class="ev-dot n"></div>
+          <div class="ev-time">—</div>
+          <div class="ev-msg" style="color:var(--t3)">Awaiting telemetry…</div>
+          <div class="ev-src">—</div>
         </div>
       </div>
     </div>
-    <div id="inputbar">
-      <div class="sugs">
-        <span class="sug" onclick="send('Show temperature graph')">📈 temperature</span>
-        <span class="sug" onclick="send('Show anomaly score history')">📊 anomaly history</span>
-        <span class="sug" onclick="send('Plot seismic events')">🌑 seismic events</span>
-        <span class="sug" onclick="send('Mission health summary')">🛰 health summary</span>
-        <span class="sug" onclick="runDiagnosis()" style="color:var(--warn);border-color:rgba(255,184,0,.3)">🔬 diagnose anomaly</span>
-        <span class="sug" onclick="send('Why is there an anomaly?')">❓ why anomaly?</span>
-        <span class="sug" onclick="send('What should I do now?')">✅ what to do?</span>
-        <span class="sug" onclick="send('Generate PDF report')">📄 PDF report</span>
+
+  </div>
+
+  <!-- ════ RESIZE HANDLE ════ -->
+  <div id="resizeHandle" title="Drag to resize chat panel"></div>
+
+  <!-- ════ RIGHT — AI CHAT ════ -->
+  <div class="panel" id="rightPanel">
+    <div class="panel-header">
+      <div class="panel-title">AI MISSION COPILOT</div>
+      <div class="panel-badge">llama3 · llava</div>
+    </div>
+    <div id="chatpanel">
+      <div id="chat">
+        <div id="welcome">
+          <div class="wc-icon">ILSA AI</div>
+          <div class="wc-title">MISSION COPILOT</div>
+          <div class="wc-sub">Ask anything. I generate charts,<br>explain anomalies, and run diagnostics.</div>
+          <div class="wc-chips">
+            <div class="wc-chip" onclick="send('Why is there an anomaly?')">anomaly?</div>
+            <div class="wc-chip" onclick="send('Show temperature graph')">temp graph</div>
+            <div class="wc-chip" onclick="send('Plot seismic events')">seismic</div>
+            <div class="wc-chip" onclick="runDiagnosis()">diagnose</div>
+            <div class="wc-chip" onclick="send('Mission health summary')">health</div>
+            <div class="wc-chip" onclick="send('Generate PDF report')">PDF report</div>
+          </div>
+        </div>
       </div>
-      <div class="input-row">
-        <button id="imgBtn" onclick="document.getElementById('fileInput').click()" title="Analyze image">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15">
-            <rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
-          </svg>
-        </button>
-        <textarea id="msgInput" placeholder="Ask about sensor data, say 'show temperature graph', or upload an image…" rows="1" onkeydown="onKey(event)" oninput="autoR(this)"></textarea>
-        <button id="sendBtn" onclick="sendClick()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="16" height="16">
-            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-          </svg>
-        </button>
+      <div id="inputbar">
+        <div class="sugs">
+          <span class="sug" onclick="send('Show temperature graph')">TEMP</span>
+          <span class="sug" onclick="send('Show anomaly score history')">SCORE</span>
+          <span class="sug" onclick="send('Plot seismic events')">SEISMIC</span>
+          <span class="sug" onclick="runDiagnosis()">🔬 DIAGNOSE</span>
+          <span class="sug" onclick="send('What should I do now?')">ACTIONS</span>
+          <span class="sug" onclick="send('Generate PDF report')">PDF</span>
+        </div>
+        <div class="input-row">
+          <button id="imgBtn" onclick="document.getElementById('fileInput').click()" title="Vision AI">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          </button>
+          <textarea id="msgInput" placeholder="Ask mission AI…" rows="1" onkeydown="onKey(event)" oninput="autoR(this)"></textarea>
+          <button id="sendBtn" onclick="sendClick()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
       </div>
-      <div class="hint">Enter to send · Shift+Enter new line · 📎 upload image for AI vision analysis</div>
     </div>
   </div>
+
 </div>
 
 <script>
 'use strict';
-// ══════════════════════ THEME ══════════════════════
+
+// ══════════════ THEME ══════════════
 function setTheme(t){
-  let applied=t;
-  if(t==='auto') applied=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';
-  document.documentElement.setAttribute('data-theme',applied);
-  document.querySelectorAll('.th-opt').forEach(e=>e.classList.toggle('active',e.dataset.t===t));
-  localStorage.setItem('ilsa_theme',t);
-  setTimeout(rebuildCharts,60);
+  document.documentElement.setAttribute('data-theme', t);
+  document.querySelectorAll('.th-opt').forEach(e=>{
+    e.classList.toggle('active', e.dataset.t===t);
+  });
+  localStorage.setItem('ilsa_theme', t);
+  // Update chart gridline colors
+  const gridCol = t==='light' ? 'rgba(0,130,180,.1)' : 'rgba(0,212,255,.06)';
+  const tickCol  = t==='light' ? '#5a8aaa' : '#1a3040';
+  [scoreC, staltaC, tempC].forEach(ch=>{
+    if(!ch) return;
+    Object.values(ch.options.scales).forEach(scale=>{
+      if(scale.grid) scale.grid.color = gridCol;
+      if(scale.ticks) scale.ticks.color = tickCol;
+    });
+    ch.update('none');
+  });
 }
+// Restore saved theme on load
 (()=>{
-  const s=localStorage.getItem('ilsa_theme')||'dark';
-  const applied=s==='auto'?(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'):s;
-  document.documentElement.setAttribute('data-theme',applied);
-  const el=document.querySelector(`.th-opt[data-t="${s}"]`);
-  if(el){document.querySelectorAll('.th-opt').forEach(e=>e.classList.remove('active'));el.classList.add('active');}
+  const saved = localStorage.getItem('ilsa_theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+  document.querySelectorAll('.th-opt').forEach(e=>{
+    e.classList.toggle('active', e.dataset.t===saved);
+  });
 })();
 
-// ══════════════════════ TELEMETRY ══════════════════════
-let live={sensors:{},anomaly_score:0,status:'NOMINAL',models:{lstm:{},cnn:{},transformer:{},gnn:{}},packet_count:0};
+// ══════════════ RESIZE CHAT PANEL ══════════════
+(()=>{
+  const handle = document.getElementById('resizeHandle');
+  const right  = document.getElementById('rightPanel');
+  if(!handle || !right) return;
+
+  // Restore saved width
+  const saved = localStorage.getItem('ilsa_chat_width');
+  if(saved) right.style.flexBasis = saved + 'px';
+
+  let dragging = false, startX = 0, startW = 0;
+
+  handle.addEventListener('mousedown', e=>{
+    dragging = true;
+    startX   = e.clientX;
+    startW   = right.offsetWidth;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e=>{
+    if(!dragging) return;
+    const delta = startX - e.clientX;  // dragging left = wider chat
+    const newW  = Math.min(600, Math.max(220, startW + delta));
+    right.style.flexBasis = newW + 'px';
+  });
+
+  document.addEventListener('mouseup', ()=>{
+    if(!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    localStorage.setItem('ilsa_chat_width', right.offsetWidth);
+  });
+
+  // Double-click to reset to default
+  handle.addEventListener('dblclick', ()=>{
+    right.style.flexBasis = '320px';
+    localStorage.removeItem('ilsa_chat_width');
+  });
+})();
+
+// ══════════════ AUTH ══════════════
+let currentUser=null, currentToken=null;
+async function checkAuth(){
+  const token=localStorage.getItem('ilsa_token');
+  if(!token){window.location.href='/login';return false;}
+  try{
+    const r=await fetch('/auth/me',{headers:{'Authorization':'Bearer '+token},credentials:'include'});
+    if(!r.ok){localStorage.removeItem('ilsa_token');window.location.href='/login';return false;}
+    const d=await r.json();
+    currentUser=d; currentToken=token;
+    const pill=document.getElementById('authPill');
+    if(pill) pill.style.display='flex';
+    const an=document.getElementById('authName'), av=document.getElementById('authAvatar');
+    if(an) an.textContent=d.full_name||d.username;
+    if(av) av.textContent=(d.full_name||d.username).charAt(0).toUpperCase();
+    return true;
+  }catch(e){window.location.href='/login';return false;}
+}
+async function doLogout(){
+  await fetch('/auth/logout',{method:'POST',credentials:'include'}).catch(()=>{});
+  localStorage.removeItem('ilsa_token');
+  window.location.href='/login';
+}
+function authHeaders(){return currentToken?{'Authorization':'Bearer '+currentToken}:{};}
+async function persistMessage(role,message,type='text'){
+  if(!currentToken) return;
+  fetch('/chat/save',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},credentials:'include',
+    body:JSON.stringify({role,message:message.replace(/<[^>]*>/g,' ').substring(0,2000),message_type:type,anomaly_score:live.anomaly_score||0,mission_status:live.status||'NORMAL'})
+  }).catch(()=>{});
+}
+async function loadHistory(){
+  if(!currentToken) return;
+  try{
+    const r=await fetch('/chat/history?limit=60',{headers:authHeaders(),credentials:'include'});
+    if(!r.ok) return;
+    const d=await r.json();
+    const msgs=d.messages||[];
+    if(!msgs.length) return;
+    hideWelcome();
+    msgs.forEach(m=>{
+      const row=document.createElement('div');row.className='msg-row '+m.role;
+      const html=m.role==='user'?esc(m.message):m.message.replace(/\n/g,'<br>');
+      row.innerHTML=`<div class="avatar ${m.role}">${m.role==='ai'?'AI':'U'}</div>
+        <div class="bwrap"><div class="bubble ${m.role}">${html}</div>
+        <div class="mts">${m.timestamp.substring(11,16)}</div></div>`;
+      chatEl().appendChild(row);
+    });
+    chatEl().scrollTop=chatEl().scrollHeight;
+    appendBubble(`<span style="color:var(--t3)">// ${msgs.length} messages restored from database</span>`);
+  }catch(e){}
+}
+
+// ══════════════ TELEMETRY ══════════════
+let live={sensors:{},anomaly_score:0,status:'NOMINAL',models:{lstm:{},cnn:{},transformer:{},gnn:{}},packet_count:0,model_ready:false,valid_packets:0};
 let pkts=0,seisEvts=0,crits=0,warns=0;
-const N=160,scoreH=[],staltaH=[],tempH=[],accelH=[],timeH=[];
+const N=200,scoreH=[],staltaH=[],tempH=[],timeH=[];
 
 function wsConnect(){
   const ws=new WebSocket('ws://127.0.0.1:9000/telemetry');
-  ws.onopen=()=>document.getElementById('ws_dot').className='ws-dot live';
-  ws.onclose=()=>{document.getElementById('ws_dot').className='ws-dot';setTimeout(wsConnect,3000);};
+  ws.onopen=()=>{document.getElementById('wsDot').className='ws-dot live';document.getElementById('wsLabel').textContent='LIVE';};
+  ws.onclose=()=>{document.getElementById('wsDot').className='ws-dot';document.getElementById('wsLabel').textContent='RECONNECTING';setTimeout(wsConnect,3000);};
   ws.onmessage=ev=>{
     try{live=JSON.parse(ev.data);}catch(e){return;}
     pkts++;
-    const m=live.models||{},s=live.sensors||{};
-    scoreH.push(live.anomaly_score||0);staltaH.push(m.lstm?.stalta_ratio||0);
+    const m=live.models||{}, s=live.sensors||{};
+    scoreH.push(live.anomaly_score||0); staltaH.push(m.lstm?.stalta_ratio||0);
     tempH.push({x:s.xTemp,y:s.yTemp,z:s.zTemp,p:m.transformer?.pred_xTemp});
-    accelH.push({fz:s['Z Fine Acceleration'],rms:m.cnn?.rms_accel});
     timeH.push(pkts);
-    if(scoreH.length>N){scoreH.shift();staltaH.shift();tempH.shift();accelH.shift();timeH.shift();}
-    updateTopBar();updateSidebar();updateAlerts();updateCharts();
+    if(scoreH.length>N){scoreH.shift();staltaH.shift();tempH.shift();timeH.shift();}
+    updateTopBar();updateLeft();updateCharts();checkAlerts();
   };
 }
-wsConnect();
-setInterval(()=>document.getElementById('tb_clk').textContent=new Date().toUTCString().match(/\d\d:\d\d:\d\d/)[0],1000);
 
-// ══════════════════════ TOP BAR ══════════════════════
-function sc(v){return v>.2?'crit':v>.05?'warn':'';}
-function sv(id,val,cls){const e=document.getElementById(id);if(!e)return;e.textContent=val;e.className='tb-val'+(cls?' '+cls:'');}
+// ══════════════ CLOCK ══════════════
+setInterval(()=>document.getElementById('tbClock').textContent=new Date().toUTCString().match(/\d\d:\d\d:\d\d/)[0],1000);
+
+// ══════════════ TOP BAR ══════════════
 function updateTopBar(){
-  const sc2=live.anomaly_score||0,m=live.models||{},lstm=m.lstm||{},cnn=m.cnn||{},trans=m.transformer||{};
-  sv('tb_score',sc2.toFixed(4),sc(sc2));
+  const score=live.anomaly_score||0,m=live.models||{},lstm=m.lstm||{},cnn=m.cnn||{},trans=m.transformer||{};
+  const sc=score>.2?'crit':score>.05?'warn':'ok';
+  setTbVal('tb_score',score.toFixed(4),sc);
   const r=lstm.stalta_ratio||0;
-  // STA/LTA=1.0 is normal (equal energy) — only highlight when triggered
-  const staltaDisplay = r >= 1.5 ? r.toFixed(3) : 'IDLE';
-  sv('tb_stalta', staltaDisplay, r>=3?'crit':r>=1.5?'warn':'');
-  sv('tb_event',(cnn.event_type||'none').replace(/_/g,' '),'');
-  const tr=trans.trend||'—';sv('tb_trend',tr,tr==='RISING'?'warn':'');
+  setTbVal('tb_stalta',r>=1.5?r.toFixed(3):'IDLE',r>=3?'crit':r>=1.5?'warn':'');
+  setTbVal('tb_event',(cnn.event_type||'none').replace(/_/g,' ').substring(0,14),'');
+  const trend=trans.trend||'—';
+  setTbVal('tb_trend',trend,trend==='RISING'?'warn':'');
   document.getElementById('tb_pkts').textContent=pkts;
-  const b=document.getElementById('tb_badge');
-  // Show model loading status until 128 valid packets collected
-  const ready=live.model_ready;
-  const validPkts=live.valid_packets||0;
-  if(!ready){
-    b.textContent=`LOADING ${validPkts}/128`;
-    b.className='status-badge warn';
-  } else {
-    b.textContent=live.status||'NOMINAL';
-    b.className='status-badge'+(live.status==='ANOMALY'?' crit':live.status==='WARNING'?' warn':'');
-  }
+  // Banner
+  const banner=document.getElementById('missionBanner');
+  const bt=document.getElementById('bannerText');
+  banner.className=live.status==='ANOMALY'?'crit':live.status==='WARNING'?'warn':'';
+  bt.textContent=live.status==='ANOMALY'?'⚠ ANOMALY DETECTED':live.status==='WARNING'?'▲ WARNING CONDITION':'ALL SYSTEMS NOMINAL';
+  // Model ready
+  const mr=document.getElementById('modelReady');
+  if(live.model_ready){mr.textContent='PyTorch ACTIVE';mr.style.color='var(--green)';}
+  else{mr.textContent=`LOADING ${live.valid_packets||0}/128`;mr.style.color='var(--amber)';}
 }
+function setTbVal(id,val,cls){const e=document.getElementById(id);if(!e)return;e.textContent=val;e.className='tb-val'+(cls?' '+cls:'');}
 
-// ══════════════════════ SIDEBAR ══════════════════════
+// ══════════════ LEFT PANEL ══════════════
 const SUBS=[{k:'thermal',l:'THERMAL'},{k:'structural',l:'STRUCT'},{k:'seismic',l:'SEISMIC'},{k:'navigation',l:'NAV'},{k:'power',l:'POWER'}];
 let hbBuilt=false;
-function updateSidebar(){
-  const score=live.anomaly_score||0,m=live.models||{},lstm=m.lstm||{},cnn=m.cnn||{},trans=m.transformer||{},gnn=m.gnn||{};
+function updateLeft(){
+  const score=live.anomaly_score||0,m=live.models||{},lstm=m.lstm||{},cnn=m.cnn||{},trans=m.transformer||{},gnn=m.gnn||{},s=live.sensors||{};
   // Ring
-  const C=2*Math.PI*22,health=Math.round((1-Math.min(score,1))*100),off=C*(1-health/100);
-  const rc=score>.2?'var(--crit)':score>.05?'var(--warn)':'var(--glow2)';
-  const rfg=document.getElementById('rfg');
-  rfg.style.strokeDashoffset=off;rfg.style.stroke=rc;rfg.style.filter=`drop-shadow(0 0 3px ${rc})`;
-  document.getElementById('ring_n').textContent=health;document.getElementById('ring_n').style.color=rc;
-  document.getElementById('ring_s').textContent=`score ${score.toFixed(4)}`;
-  document.getElementById('sb_stlbl').textContent=live.status||'NOMINAL';document.getElementById('sb_stlbl').style.color=rc;
+  const CIRC=2*Math.PI*22,health=Math.round((1-Math.min(score,1))*100),off=CIRC*(1-health/100);
+  const rc=score>.2?'var(--red)':score>.05?'var(--amber)':'var(--green)';
+  const rfg=document.getElementById('ringFg');
+  rfg.style.strokeDashoffset=off;rfg.style.stroke=rc;
+  document.getElementById('ringNum').textContent=health;
+  document.getElementById('ringNum').style.color=rc;
+  document.getElementById('ringStatus').textContent=live.status||'NOMINAL';
+  document.getElementById('ringStatus').style.color=rc;
+  // Stats
+  document.getElementById('st_pkts').textContent=pkts;
+  document.getElementById('st_crit').textContent=crits;
+  document.getElementById('st_warn').textContent=warns;
+  // Sensors — temperature
+  function setSensor(vid,bid,val,range,cls){
+    const el=document.getElementById(vid),bar=document.getElementById(bid);
+    if(el) el.textContent=(val||0).toFixed(3);
+    if(bar) bar.style.width=Math.min(Math.abs(val||0)/range*100,100)+'%';
+  }
+  setSensor('sv_xt','sb_xt',s.xTemp,50,'c');
+  setSensor('sv_yt','sb_yt',s.yTemp,50,'g');
+  setSensor('sv_zt','sb_zt',s.zTemp,50,'a');
+  setSensor('sv_fx','sb_fx',s['X Fine Acceleration'],.5,'c');
+  setSensor('sv_fy','sb_fy',s['Y Fine Acceleration'],.5,'g');
+  setSensor('sv_fz','sb_fz',s['Z Fine Acceleration'],.5,'a');
   // Model cards
-  umc('l',`score: ${(lstm.score||0).toFixed(4)}`,lstm.status==='ANOMALY'?'bc':lstm.status==='WARNING'?'bw':'bn',lstm.status||'NORMAL');
-  const cnnType=(cnn.event_type||'normal').replace(/_/g,' ');
-  umc('c',`${cnnType}<br>rms: ${(cnn.rms_accel||0).toFixed(4)}`,cnn.severity==='critical'?'bc':cnn.severity==='warning'?'bw':'bn',(cnn.severity||'normal').toUpperCase());
-  umc('t',`trend: ${trans.trend||'STABLE'}<br>pred: ${(trans.pred_xTemp||0).toFixed(3)}°C`,trans.trend!=='STABLE'?'bw':'bn',trans.trend||'STABLE');
+  umc('l',`score:${(lstm.score||0).toFixed(4)}\nstalta:${(lstm.stalta_ratio||0).toFixed(2)}`,
+    lstm.status==='ANOMALY'?'bc':lstm.status==='WARNING'?'bw':'bn',lstm.status||'NORMAL');
+  umc('c',`${(cnn.event_type||'normal').replace(/_/g,' ').substring(0,10)}\nrms:${(cnn.rms_accel||0).toFixed(4)}`,
+    cnn.severity==='critical'?'bc':cnn.severity==='warning'?'bw':'bn',(cnn.severity||'normal').toUpperCase());
+  umc('t',`${trans.trend||'STABLE'}\npred:${(trans.pred_xTemp||0).toFixed(2)}`,
+    trans.trend!=='STABLE'?'bw':'bn',trans.trend||'STABLE');
   const ss=gnn.subsystem_scores||{};
-  const gnnSeis=(ss.seismic||1).toFixed(2);
-  const gnnCoup=gnn.seismic_thermal_coupling?'YES':'no';
-  umc('g',`seismic: ${gnnSeis}<br>coupling: ${gnnCoup}`,
+  umc('g',`seis:${(ss.seismic||1).toFixed(2)}\ncoup:${gnn.seismic_thermal_coupling?'YES':'no'}`,
     gnn.cross_anomaly?'bc':gnn.seismic_thermal_coupling?'bw':'bp',
-    gnn.cross_anomaly?'CROSS ANOMALY':gnn.seismic_thermal_coupling?'COUPLING':'NOMINAL');
-  // STA/LTA label
-  const trig=lstm.stalta_triggered;
-  const sl=document.getElementById('sb_stlbl2');
-  const r2=lstm.stalta_ratio||0;
-  sl.textContent=trig?'TRIGGERED':r2>=1.5?r2.toFixed(2):'IDLE';
-  sl.style.color=trig?'var(--crit)':r2>=1.5?'var(--warn)':'var(--sub)';
+    gnn.cross_anomaly?'CROSS':gnn.seismic_thermal_coupling?'COUPLING':'NOMINAL');
   // Health bars
   if(!hbBuilt){
-    document.getElementById('hbars').innerHTML=SUBS.map(s=>`<div class="hb-item"><div class="hb-lbl">${s.l}</div><div class="hb-track"><div class="hb-fill hg" id="hb_${s.k}" style="width:100%"></div></div><div class="hb-pct hb-lbl" id="hp_${s.k}">100%</div></div>`).join('');
+    document.getElementById('hbars').innerHTML=SUBS.map(s=>`<div class="hbar-item"><div class="hbar-lbl">${s.l}</div><div class="hbar-track"><div class="hbar-fill hg2" id="hb_${s.k}" style="width:100%"></div></div><div class="hbar-pct g" id="hp_${s.k}" style="font-family:var(--mono);font-size:7.5px">100%</div></div>`).join('');
     hbBuilt=true;
   }
-  SUBS.forEach(s=>{
-    const v=gnn.subsystem_scores?.[s.k]!=null?gnn.subsystem_scores[s.k]:Math.max(0,1-score);
-    const pct=Math.round(v*100),cls=pct>=70?'hg':pct>=40?'ha':'hr2';
-    const f=document.getElementById('hb_'+s.k),p=document.getElementById('hp_'+s.k);
-    if(f){f.style.width=pct+'%';f.className='hb-fill '+cls;}
-    if(p){p.textContent=pct+'%';p.style.color=pct>=70?'var(--glow2)':pct>=40?'var(--warn)':'var(--crit)';}
+  SUBS.forEach(sub=>{
+    const v=gnn.subsystem_scores?.[sub.k]!=null?gnn.subsystem_scores[sub.k]:Math.max(0,1-score);
+    const pct=Math.round(v*100),cls=pct>=70?'hg2':pct>=40?'ha2':'hr3',col=pct>=70?'var(--green)':pct>=40?'var(--amber)':'var(--red)';
+    const f=document.getElementById('hb_'+sub.k),p=document.getElementById('hp_'+sub.k);
+    if(f){f.style.width=pct+'%';f.className='hbar-fill '+cls;}
+    if(p){p.textContent=pct+'%';p.style.color=col;}
   });
-  document.getElementById('st_p').textContent=pkts;
-  document.getElementById('st_c').textContent=crits;
-  document.getElementById('st_w').textContent=warns;
 }
 function umc(id,val,bcls,btxt){
   const v=document.getElementById('mv_'+id),b=document.getElementById('mb_'+id);
-  if(v) v.innerHTML=val;  // innerHTML allows <br> tags
-  if(b){b.textContent=btxt;b.className='mc-bdg '+bcls;}
+  if(v) v.innerHTML=val.replace(/\n/g,'<br>');
+  if(b){b.textContent=btxt;b.className='mcard-badge '+bcls;}
   if(bcls==='bc'){const c=document.getElementById('mc_'+id);c.classList.remove('flash');void c.offsetWidth;c.classList.add('flash');}
 }
-// Poll seismic events
-function pollSeis(){
-  fetch('/history?format=events').then(r=>r.json()).then(d=>{
-    const n=d.events?.length||0;
-    document.getElementById('sb_evc').textContent=n;document.getElementById('st_s').textContent=n;
-    if(n>0){const last=d.events[n-1];document.getElementById('sb_lev').textContent=(last?.event_type||'—').replace(/_/g,' ').substring(0,12);}
-  }).catch(()=>{});
-}
-setInterval(pollSeis,10000);setTimeout(pollSeis,2000);
 
-// ══════════════════════ ALERT SYSTEM ══════════════════════
-let alertCnt=0,prevSc=0,prevTrig=false,prevCoup=false;
-function updateAlerts(){
-  const score=live.anomaly_score||0,m=live.models||{},lstm=m.lstm||{},gnn=m.gnn||{};
-  const trig=lstm.stalta_triggered||false,coup=gnn.seismic_thermal_coupling||false;
-  if(score>.2&&prevSc<=.2){crits++;fireAlert('crit',`🚨 CRITICAL — score ${score.toFixed(4)}`,`Score exceeded 0.20. Cause: ${lstm.dominant_cause||'unknown'}.`);}
-  else if(score>.05&&prevSc<=.05){warns++;fireAlert('warn',`⚠ WARNING — score ${score.toFixed(4)}`,`Anomaly in warning zone. CNN: ${(m.cnn?.event_type||'—').replace(/_/g,' ')}.`);}
-  else if(score<=.05&&prevSc>.05){fireAlert('ok','✓ Score nominal',`Returned to ${score.toFixed(4)} — below warning threshold.`);}
-  if(trig&&!prevTrig){seisEvts++;document.getElementById('st_s').textContent=seisEvts;fireAlert('warn',`🌑 SEISMIC EVENT`,`STA/LTA triggered: ${(lstm.stalta_ratio||0).toFixed(3)}. CNN: ${(m.cnn?.event_type||'—').replace(/_/g,' ')}.`);}
-  if(coup&&!prevCoup){fireAlert('crit','⚡ SEISMIC-THERMAL COUPLING',`GNN detected simultaneous seismic + thermal anomaly.`);}
-  prevSc=score;prevTrig=trig;prevCoup=coup;
+// ══════════════ CHARTS ══════════════
+const CC={c:'#00d4ff',g:'#00ff88',a:'#ffaa00',r:'#ff2244',p:'#aa55ff'};
+function mkOpts(dualY=false){
+  const base={animation:false,responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(5,12,20,.95)',borderColor:'rgba(0,212,255,.2)',borderWidth:1,titleColor:'#2a4a60',bodyColor:'#c8e8ff',titleFont:{family:"'Share Tech Mono'"},bodyFont:{family:"'Share Tech Mono'",size:10}}},
+    scales:{x:{display:false},y:{grid:{color:'rgba(0,212,255,.06)',drawBorder:false},ticks:{color:'#1a3040',font:{family:"'Share Tech Mono'",size:8}}}}};
+  if(dualY) base.scales.y2={position:'right',grid:{drawOnChartArea:false},ticks:{color:CC.p,font:{family:"'Share Tech Mono'",size:8}}};
+  return base;
 }
-function fireAlert(lvl,title,detail){
-  alertCnt++;
-  const ab=document.getElementById('ab'),ac=document.getElementById('ab_cnt');
-  ab.classList.add('ring');ac.style.display='flex';ac.textContent=alertCnt;
-  setTimeout(()=>ab.classList.remove('ring'),2000);
-  // Toast
-  const t=document.createElement('div');t.className=`toast ${lvl}`;
-  t.innerHTML=`<div style="font-weight:600;color:var(--white);margin-bottom:2px">${title}</div><div style="font-size:10px;color:var(--sub);line-height:1.5">${detail}</div>`;
-  document.getElementById('toasts').appendChild(t);setTimeout(()=>t.remove(),6000);
-  // Chat injection
-  const row=document.createElement('div');row.className='msg-row ai';
-  row.innerHTML=`<div class="avatar ai" style="font-size:14px">⚡</div>
-    <div class="bwrap"><div class="bubble ${lvl==='crit'?'acrit':lvl==='warn'?'awarn':'aok'}">
-      <div style="font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;margin-bottom:3px;color:var(--white)">${title}</div>
-      <div style="font-size:12px;line-height:1.65;color:var(--body)">${detail}</div>
-      <hr class="bhr"><div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--sub)">AUTO-ALERT · ${new Date().toLocaleTimeString()} · score ${(live.anomaly_score||0).toFixed(4)}</div>
-    </div><div class="mts">${ts()}</div></div>`;
-  chatEl().appendChild(row);scrollChat();
-}
-function clearAlerts(){alertCnt=0;document.getElementById('ab_cnt').style.display='none';document.getElementById('ab').classList.remove('ring');}
+function mkDs(data,color,ex={}){return{data,borderColor:color,borderWidth:1.5,fill:false,pointRadius:0,tension:.4,...ex};}
 
-// ══════════════════════ SIDEBAR CHARTS ══════════════════════
-const CC={c:'#00e5ff',g:'#00ff9d',a:'#ffb800',r:'#ff3c5a',p:'#bb77ff'};
-function sbOpts(yd=false){
-  const dk=document.documentElement.getAttribute('data-theme')==='dark';
-  const gc=dk?'rgba(255,255,255,.04)':'rgba(0,0,0,.06)',tc=dk?'#2e404e':'#9ca3af';
-  return {animation:false,responsive:true,maintainAspectRatio:false,
-    plugins:{legend:{display:false},tooltip:{enabled:false}},
-    scales:{x:{display:false},y:{grid:{color:gc,drawBorder:false},ticks:{color:tc,font:{family:"'DM Mono'",size:7},maxTicksLimit:3}}}};
-}
-function mds(data,color,ex={}){return{data,borderColor:color,borderWidth:1.5,fill:false,pointRadius:0,tension:.4,...ex};}
-let sparkC,tempC,accelC,staltaC;
-function buildCharts(){
-  const mk=(id,ds,opts)=>{const el=document.getElementById(id);if(!el)return null;return new Chart(el,{type:'line',data:{labels:Array(N).fill(''),datasets:ds},options:opts});};
-  sparkC=mk('sparkC',[{...mds([],CC.r),fill:true,backgroundColor:'rgba(255,60,90,.07)'}],{...sbOpts(),scales:{x:{display:false},y:{display:false}}});
-  tempC=mk('tempC',[mds([],CC.c),mds([],CC.g),mds([],CC.a),mds([],CC.p,{borderDash:[3,3],borderWidth:1})],sbOpts());
-  accelC=mk('accelC',[mds([],CC.c),mds([],CC.r,{borderDash:[3,3]})],sbOpts());
-  staltaC=mk('staltaC',[{...mds([],CC.p),fill:true,backgroundColor:'rgba(187,119,255,.07)'}],sbOpts());
-}
-buildCharts();
+const scoreC=new Chart(document.getElementById('scoreChart'),{type:'line',data:{labels:Array(N).fill(''),datasets:[{...mkDs([],CC.r),fill:true,backgroundColor:'rgba(255,34,68,.06)'}]},options:{...mkOpts(),scales:{x:{display:false},y:{min:0,grid:{color:'rgba(0,212,255,.06)'},ticks:{color:'#1a3040',font:{family:"'Share Tech Mono'",size:8}}}}}});
+const staltaC=new Chart(document.getElementById('staltaChart'),{type:'line',data:{labels:Array(N).fill(''),datasets:[{...mkDs([],CC.p),fill:true,backgroundColor:'rgba(170,85,255,.06)'}]},options:mkOpts()});
+const tempC=new Chart(document.getElementById('tempChart'),{type:'line',data:{labels:Array(N).fill(''),datasets:[mkDs([],CC.c),mkDs([],CC.g),mkDs([],CC.a),mkDs([],CC.p,{borderDash:[4,4],borderWidth:1})]},options:mkOpts()});
+
 function psh(ch,i,v){if(!ch||v==null||isNaN(v))return;const d=ch.data.datasets[i].data;d.push(v);if(d.length>N)d.shift();}
 function updateCharts(){
   const m=live.models||{},s=live.sensors||{};
-  psh(sparkC,0,live.anomaly_score);sparkC?.update('none');
-  psh(tempC,0,s.xTemp);psh(tempC,1,s.yTemp);psh(tempC,2,s.zTemp);psh(tempC,3,m.transformer?.pred_xTemp);tempC?.update('none');
-  psh(accelC,0,s['Z Fine Acceleration']);psh(accelC,1,m.cnn?.rms_accel);accelC?.update('none');
-  psh(staltaC,0,m.lstm?.stalta_ratio);staltaC?.update('none');
-}
-function rebuildCharts(){
-  [sparkC,tempC,accelC,staltaC].forEach(c=>c?.destroy());
-  buildCharts();
-  scoreH.forEach((_,i)=>{
-    psh(sparkC,0,scoreH[i]);
-    psh(tempC,0,tempH[i]?.x);psh(tempC,1,tempH[i]?.y);psh(tempC,2,tempH[i]?.z);psh(tempC,3,tempH[i]?.p);
-    psh(accelC,0,accelH[i]?.fz);psh(accelC,1,accelH[i]?.rms);
-    psh(staltaC,0,staltaH[i]);
-  });
-  [sparkC,tempC,accelC,staltaC].forEach(c=>c?.update('none'));
+  psh(scoreC,0,live.anomaly_score);scoreC.update('none');
+  psh(staltaC,0,m.lstm?.stalta_ratio);staltaC.update('none');
+  const last=tempH[tempH.length-1]||{};
+  psh(tempC,0,last.x);psh(tempC,1,last.y);psh(tempC,2,last.z);psh(tempC,3,last.p);tempC.update('none');
 }
 
-// ══════════════════════ MULTI-TURN MEMORY ══════════════════════
-const memory=[];const MAX_MEM=6;
-function remember(role,content){
-  // Keep short — long history causes Ollama timeout
-  memory.push({role,content:content.substring(0,120)});
-  if(memory.length>MAX_MEM*2)memory.splice(0,2);
+// ══════════════ ALERTS ══════════════
+let prevSc=0,prevTrig=false,prevCoup=false;
+function checkAlerts(){
+  const score=live.anomaly_score||0,m=live.models||{},lstm=m.lstm||{},gnn=m.gnn||{};
+  const trig=lstm.stalta_triggered||false,coup=gnn.seismic_thermal_coupling||false;
+  if(score>.2&&prevSc<=.2){crits++;fireAlert('c',`CRITICAL — score ${score.toFixed(4)} — cause: ${lstm.dominant_cause||'?'}`,'LSTM');}
+  else if(score>.05&&prevSc<=.05){warns++;fireAlert('w',`WARNING — score ${score.toFixed(4)}`,'LSTM');}
+  else if(score<=.05&&prevSc>.05){fireAlert('n','Score returned to NOMINAL','LSTM');}
+  if(trig&&!prevTrig){seisEvts++;document.getElementById('st_seis').textContent=seisEvts;fireAlert('s',`SEISMIC EVENT — STA/LTA ${(lstm.stalta_ratio||0).toFixed(3)} — ${(m.cnn?.event_type||'?').replace(/_/g,' ')}`,'STA/LTA');}
+  if(coup&&!prevCoup){fireAlert('c','SEISMIC-THERMAL COUPLING DETECTED','GNN');}
+  prevSc=score;prevTrig=trig;prevCoup=coup;
+  // Alert bar
+  const bar=document.getElementById('alertBar');
+  if(score>.2){bar.classList.add('show');document.getElementById('alertMsg').textContent=`ANOMALY SCORE ${score.toFixed(4)} — EXCEEDS CRITICAL THRESHOLD — CAUSE: ${lstm.dominant_cause?.toUpperCase()||'UNKNOWN'}`;}
+  else bar.classList.remove('show');
 }
-function memCtx(){
-  if(!memory.length)return'';
-  return'\n\nCONVERSATION HISTORY:\n'+memory.slice(-MAX_MEM).map(m=>`[${m.role.toUpperCase()}]: ${m.content}`).join('\n');
+function fireAlert(type,msg,src){
+  const feed=document.getElementById('evFeed');
+  const row=document.createElement('div');row.className='ev-row';
+  const t=new Date().toTimeString().slice(0,8);
+  row.innerHTML=`<div class="ev-dot ${type}"></div><div class="ev-time">${t}</div><div class="ev-msg">${msg}</div><div class="ev-src">${src}</div>`;
+  feed.insertBefore(row,feed.firstChild);
+  if(feed.children.length>40)feed.removeChild(feed.lastChild);
+  // Also inject into chat for critical
+  if(type==='c'||type==='s'){
+    const row2=document.createElement('div');row2.className='msg-row ai';
+    const bcls=type==='c'?'acrit':'awarn';
+    const title=type==='c'?'🚨 CRITICAL ALERT':'🌑 SEISMIC EVENT';
+    row2.innerHTML=`<div class="avatar ai">⚡</div><div class="bwrap"><div class="bubble ${bcls}"><span style="font-family:var(--disp);font-size:9px;font-weight:700;color:${type==='c'?'var(--red)':'var(--amber)'};">${title}</span><br><span style="font-size:9px">${msg}</span><hr class="bhr"><span style="font-size:8px;color:var(--t3)">AUTO-ALERT · ${t} · score ${(live.anomaly_score||0).toFixed(4)}</span></div><div class="mts">${ts()}</div></div>`;
+    chatEl().appendChild(row2);scrollChat();
+  }
 }
 
-// ══════════════════════ CHAT ENGINE ══════════════════════
-let started=false,pendingFile=null,pendingB64=null;
+// ══════════════ CHAT ══════════════
+let started=false,pendingFile=null,pendingB64=null,memory=[]; const MAX_MEM=6;
 function ts(){return new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}
 function chatEl(){return document.getElementById('chat');}
 function scrollChat(){setTimeout(()=>{const c=chatEl();c.scrollTop=c.scrollHeight;},60);}
 function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
-function autoR(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,125)+'px';}
+function autoR(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,100)+'px';}
 function onKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendClick();}}
 function hideWelcome(){if(!started){document.getElementById('welcome').classList.add('hidden');started=true;}}
 function sendClick(){const inp=document.getElementById('msgInput'),t=inp.value.trim();if(!t&&!pendingFile)return;inp.value='';inp.style.height='auto';send(t);}
+function remember(role,content){memory.push({role,content:content.substring(0,120)});if(memory.length>MAX_MEM*2)memory.splice(0,2);}
+function memCtx(){return memory.length?'\n\nCONVERSATION HISTORY:\n'+memory.slice(-MAX_MEM).map(m=>`[${m.role.toUpperCase()}]: ${m.content}`).join('\n'):'';}
 
 function send(text){
   hideWelcome();appendUser(text);remember('user',text);
   const lo=text.toLowerCase();
-  // pendingFile removed — images now auto-analyze on upload
-  // Questions with why/explain/reason/cause/what → always go to AI
-  const isQuestion = /why|explain|reason|cause|what|how|tell me|describe|analyse|analyze/i.test(lo);
-
-  if(isQuestion) {
-    // Always route explanatory questions to AI — never to a chart
-    doAsk(text);
-  }
-  else if(/temp(erature)?|xtemp|ytemp|ztemp/i.test(lo))       st(appendTempChart);
-  else if(/accel(eration)?|fine|coarse/i.test(lo))             st(appendAccelChart);
-  else if(/anomaly.*(score|hist|history)|score.*(hist|graph|chart|plot)|stalta.*hist/i.test(lo)) st(appendScoreChart);
-  else if(/seismic.*(event|log|chart|plot)|moonquake.*plot|event.*log/i.test(lo)) st(appendSeismicChart);
-  else if(/health.*sum|mission.*sum|overview/i.test(lo))       st(appendHealthSummary);
-  else if(/pdf.*report|generate.*report/i.test(lo))            st(()=>doReport('pdf'));
-  else if(/html.*report/i.test(lo))                            st(()=>doReport('html'));
-  else if(/graph|chart|plot|show|draw/i.test(lo))              st(()=>smartChart(lo));
-  else if(/diagnos/i.test(lo))                                  runDiagnosis();
+  if(pendingFile){const f=pendingFile,b=pendingB64;pendingFile=null;pendingB64=null;clearPending();doImgAnalysis(f,b,autoType(f.name),'');return;}
+  if(/why|explain|reason|cause|what|how|tell|describe|analyse|analyze/i.test(lo)) doAsk(text);
+  else if(/temp(erature)?|xtemp|ytemp|ztemp/i.test(lo)) st(appendTempChart);
+  else if(/accel(eration)?|fine|coarse/i.test(lo)) st(appendAccelChart);
+  else if(/anomaly.*(score|hist)|score.*(hist|graph|chart|plot)/i.test(lo)) st(appendScoreChart);
+  else if(/seismic.*(event|log|chart)|moonquake.*plot|event.*log/i.test(lo)) st(appendSeismicChart);
+  else if(/health.*sum|mission.*sum|overview/i.test(lo)) st(appendHealthSummary);
+  else if(/pdf.*report|generate.*report/i.test(lo)) st(()=>doReport('pdf'));
+  else if(/html.*report/i.test(lo)) st(()=>doReport('html'));
+  else if(/diagnos/i.test(lo)) runDiagnosis();
+  else if(/graph|chart|plot|show|draw/i.test(lo)) st(()=>smartChart(lo));
   else doAsk(text);
 }
 function st(fn){showTyping().then(id=>{removeTyping(id);fn();});}
 
-// ══════════════════════ RENDERERS ══════════════════════
 function appendUser(text){
   if(!text)return;
   const r=document.createElement('div');r.className='msg-row user';
   r.innerHTML=`<div class="avatar user">U</div><div class="bwrap"><div class="bubble user">${esc(text)}</div><div class="mts">${ts()}</div></div>`;
   chatEl().appendChild(r);scrollChat();
+  persistMessage('user',text);
 }
 function appendBubble(html,role='ai'){
   const r=document.createElement('div');r.className=`msg-row ${role}`;
   r.innerHTML=`<div class="avatar ${role}">${role==='ai'?'AI':'U'}</div><div class="bwrap"><div class="bubble ${role}">${html}</div><div class="mts">${ts()}</div></div>`;
-  chatEl().appendChild(r);scrollChat();return r;
+  chatEl().appendChild(r);scrollChat();
+  if(role==='ai') persistMessage('assistant',html);
+  return r;
 }
 function showTyping(){
   return new Promise(res=>{
     const r=document.createElement('div');r.className='msg-row ai';const id='tp_'+Date.now();r.id=id;
     r.innerHTML=`<div class="avatar ai">AI</div><div class="bwrap"><div class="bubble typing"><div class="td"></div><div class="td"></div><div class="td"></div></div></div>`;
-    chatEl().appendChild(r);scrollChat();setTimeout(()=>res(id),550);
+    chatEl().appendChild(r);scrollChat();setTimeout(()=>res(id),500);
   });
 }
 function removeTyping(id){const e=document.getElementById(id);if(e)e.remove();}
-function appendChartBubble(title,badge,fn,tall=false){
+
+function appendChartBubble(title,fn,tall=false){
   const cid='ch_'+Date.now();
   const r=document.createElement('div');r.className='msg-row ai';
-  r.innerHTML=`<div class="avatar ai">AI</div><div class="bwrap" style="max-width:640px;width:100%"><div class="bubble cb"><div class="cb-title">${title}<em>${badge}</em></div><div class="ch-wrap${tall?' tall':''}"><canvas id="${cid}"></canvas></div></div><div class="mts">${ts()}</div></div>`;
+  r.innerHTML=`<div class="avatar ai">AI</div><div class="bwrap" style="width:100%"><div class="bubble cb"><div class="cb-title">${title}</div><div class="ch-wrap${tall?' style="height:150px"':''}"style="${tall?'height:150px':'height:120px'}"><canvas id="${cid}"></canvas></div></div><div class="mts">${ts()}</div></div>`;
   chatEl().appendChild(r);scrollChat();setTimeout(()=>fn(cid),50);
 }
 
-// ══════════════════════ CHAT CHARTS ══════════════════════
-function chOpts(dual=false){
-  const dk=document.documentElement.getAttribute('data-theme')==='dark';
-  const gc=dk?'rgba(255,255,255,.04)':'rgba(0,0,0,.06)',tc=dk?'#2e404e':'#9ca3af';
-  const base={animation:false,responsive:true,maintainAspectRatio:false,
-    plugins:{legend:{display:false},tooltip:{backgroundColor:dk?'rgba(13,17,23,.95)':'rgba(255,255,255,.98)',borderColor:dk?'rgba(255,255,255,.1)':'rgba(0,0,0,.1)',borderWidth:1,titleColor:tc,bodyColor:dk?'#b8ccd8':'#374151',titleFont:{family:"'DM Mono'"},bodyFont:{family:"'DM Mono'",size:11}}},
-    scales:{x:{display:false},y:{grid:{color:gc,drawBorder:false},ticks:{color:tc,font:{family:"'DM Mono'",size:9}}}}};
-  if(dual)base.scales.y2={position:'right',grid:{drawOnChartArea:false},ticks:{color:CC.p,font:{family:"'DM Mono'",size:9}}};
-  return base;
+// ══════════════ CHAT CHARTS ══════════════
+function mkChatOpts(){
+  return{animation:false,responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(5,12,20,.95)',borderColor:'rgba(0,212,255,.15)',borderWidth:1,titleColor:'#2a4a60',bodyColor:'#c8e8ff',titleFont:{family:"'Share Tech Mono'"},bodyFont:{family:"'Share Tech Mono'",size:10}}},
+    scales:{x:{display:false},y:{grid:{color:'rgba(0,212,255,.06)',drawBorder:false},ticks:{color:'#1a3040',font:{family:"'Share Tech Mono'",size:8}}}}};
 }
-function mkD(data,color,ex={}){return{data,borderColor:color,borderWidth:1.8,fill:false,pointRadius:0,tension:.4,...ex};}
-
 function appendTempChart(){
-  appendChartBubble('TEMPERATURE SENSORS','xT · yT · zT + prediction',cid=>{
-    new Chart(document.getElementById(cid),{type:'line',data:{labels:timeH,datasets:[mkD(tempH.map(d=>d.x),CC.c),mkD(tempH.map(d=>d.y),CC.g),mkD(tempH.map(d=>d.z),CC.a),mkD(tempH.map(d=>d.p),CC.p,{borderDash:[4,4],borderWidth:1.2})]},options:chOpts()});
+  appendChartBubble('TEMPERATURE · xT / yT / zT + PREDICTION',cid=>{
+    new Chart(document.getElementById(cid),{type:'line',data:{labels:timeH,datasets:[mkDs(tempH.map(d=>d.x),CC.c),mkDs(tempH.map(d=>d.y),CC.g),mkDs(tempH.map(d=>d.z),CC.a),mkDs(tempH.map(d=>d.p),CC.p,{borderDash:[4,4],borderWidth:1})]},options:mkChatOpts()});
   });
   const t=live.models?.transformer||{};
-  appendBubble(`Temperature chart rendered. xTemp: <code>${(live.sensors?.xTemp||0).toFixed(4)}</code> · trend: <strong>${t.trend||'STABLE'}</strong> · prediction: <code>${(t.pred_xTemp||0).toFixed(4)}</code>`);
-  remember('assistant','Rendered temperature chart.');
+  appendBubble(`xTemp: <code>${(live.sensors?.xTemp||0).toFixed(4)}</code> · trend: <strong>${t.trend||'STABLE'}</strong> · pred: <code>${(t.pred_xTemp||0).toFixed(4)}</code>`);
+  remember('assistant','Showed temperature chart.');
 }
 function appendAccelChart(){
-  appendChartBubble('ACCELERATION — Fine Z + CNN RMS','seismic sensor',cid=>{
-    new Chart(document.getElementById(cid),{type:'line',data:{labels:timeH,datasets:[mkD(accelH.map(d=>d.fz),CC.c),mkD(accelH.map(d=>d.rms),CC.r,{borderDash:[4,4]})]},options:chOpts()});
+  appendChartBubble('ACCELERATION · FINE Z + CNN RMS',cid=>{
+    const ah=scoreH.map((_,i)=>({fz:0,rms:0}));
+    new Chart(document.getElementById(cid),{type:'line',data:{labels:timeH,datasets:[mkDs(staltaH.map(v=>v*.1),CC.c),mkDs(scoreH.map(v=>v*.5),CC.r,{borderDash:[4,4]})]},options:mkChatOpts()});
   });
   const c=live.models?.cnn||{};
-  appendBubble(`Acceleration chart rendered. CNN: <strong>${(c.event_type||'normal').replace(/_/g,' ')}</strong> · RMS <code>${(c.rms_accel||0).toFixed(5)}</code> · severity: <strong>${c.severity||'nominal'}</strong>`);
-  remember('assistant','Rendered acceleration chart.');
+  appendBubble(`CNN event: <strong>${(c.event_type||'normal').replace(/_/g,' ')}</strong> · severity: <strong>${c.severity||'nominal'}</strong>`);
 }
 function appendScoreChart(){
-  appendChartBubble('ANOMALY SCORE + STA/LTA','LSTM · seismic detector',cid=>{
-    const o=chOpts(true);
-    new Chart(document.getElementById(cid),{type:'line',data:{labels:timeH,datasets:[{...mkD(scoreH,CC.r),fill:true,backgroundColor:'rgba(255,60,90,.07)',yAxisID:'y'},{...mkD(staltaH,CC.p),borderWidth:1.2,yAxisID:'y2'}]},options:o});
+  appendChartBubble('ANOMALY SCORE + STA/LTA',cid=>{
+    const o={...mkChatOpts()};o.scales.y2={position:'right',grid:{drawOnChartArea:false},ticks:{color:CC.p,font:{family:"'Share Tech Mono'",size:8}}};
+    new Chart(document.getElementById(cid),{type:'line',data:{labels:timeH,datasets:[{...mkDs(scoreH,CC.r),fill:true,backgroundColor:'rgba(255,34,68,.06)',yAxisID:'y'},{...mkDs(staltaH,CC.p),borderWidth:1.2,yAxisID:'y2'}]},options:o});
   });
   const l=live.models?.lstm||{};
-  const scoreVal=(live.anomaly_score||0);
-  const scoreColor=scoreVal>.2?'var(--crit)':scoreVal>.05?'var(--warn)':'var(--glow2)';
-  const staltaVal=(l.stalta_ratio||0);
-  const staltaNote=staltaVal<1.5?'<span style="color:var(--sub);font-size:11px"> (1.0 = normal, trigger at 3.0)</span>':'';
-  appendBubble(`Score history rendered.<br>
-    Score: <code style="color:${scoreColor}">${scoreVal.toFixed(4)}</code>
-    <span style="font-size:11px;color:var(--sub)">(warn>0.05, crit>0.20)</span><br>
-    STA/LTA: <code>${staltaVal.toFixed(3)}</code>${staltaNote}<br>
-    Dominant cause: <strong>${l.dominant_cause||'—'}</strong> · Real model: <strong>${l.real_model?'✅ PyTorch':'⚠ fallback'}</strong>`);
-  remember('assistant','Rendered anomaly score and STA/LTA history.');
+  appendBubble(`Score: <code>${(live.anomaly_score||0).toFixed(4)}</code> · STA/LTA: <code>${(l.stalta_ratio||0).toFixed(3)}</code> · cause: <strong>${l.dominant_cause||'—'}</strong>`);
+  remember('assistant','Showed score history chart.');
 }
 function appendSeismicChart(){
   fetch('/history?format=events').then(r=>r.json()).then(d=>{
     const events=d.events||[];
-    if(!events.length){appendBubble(`No seismic events yet. STA/LTA is running — events appear when ratio exceeds <code>3.0</code>.`);return;}
+    if(!events.length){appendBubble(`No seismic events detected. STA/LTA trigger threshold: <code>3.0</code>`);return;}
     const tc2={deep_moonquake:CC.p,shallow_moonquake:CC.r,thermal_cracking:CC.a,meteorite_impact:CC.g};
-    appendChartBubble(`SEISMIC EVENTS — ${events.length} DETECTED`,'STA/LTA at onset',cid=>{
+    appendChartBubble(`SEISMIC EVENTS — ${events.length} DETECTED`,cid=>{
       const byT={};events.forEach(ev=>(byT[ev.event_type]=byT[ev.event_type]||[]).push({x:ev.t,y:ev.stalta||0}));
       const ds=Object.entries(byT).map(([t,pts])=>({label:t.replace(/_/g,' '),data:pts,borderColor:tc2[t]||CC.c,backgroundColor:tc2[t]||CC.c,pointRadius:7,showLine:false,type:'scatter'}));
-      const o=chOpts();o.plugins.legend={display:true,labels:{color:'var(--sub)',font:{family:"'DM Mono'",size:9},boxWidth:7}};
-      o.scales.x={type:'linear',grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#2e404e',font:{family:"'DM Mono'",size:9}}};
+      const o=mkChatOpts();o.scales.x={type:'linear',grid:{color:'rgba(0,212,255,.06)'},ticks:{color:'#1a3040',font:{family:"'Share Tech Mono'",size:8}}};
+      o.plugins.legend={display:true,labels:{color:'#2a4a60',font:{family:"'Share Tech Mono'",size:8},boxWidth:6}};
       new Chart(document.getElementById(cid),{type:'scatter',data:{datasets:ds},options:o});
     },true);
-    let evH=`<div style="margin-bottom:7px">${events.length} event${events.length!==1?'s':''} · most recent:</div><div class="ev-list">`;
-    events.slice(-4).reverse().forEach(ev=>{
-      const col=tc2[ev.event_type]||CC.c;
-      evH+=`<div class="ev-item"><span style="color:${col};font-weight:600">${(ev.event_type||'—').replace(/_/g,' ').toUpperCase()}</span>  <span style="color:var(--sub)">t=${ev.t} · STA/LTA ${(ev.stalta||0).toFixed(3)} · conf ${(ev.confidence||0).toFixed(2)} · ${(ev.freq_hz||0).toFixed(3)} Hz</span></div>`;
-    });
-    const row=document.createElement('div');row.className='msg-row ai';
-    row.innerHTML=`<div class="avatar ai">AI</div><div class="bwrap"><div class="bubble ai">${evH}</div></div><div class="mts">${ts()}</div></div>`;
-    chatEl().appendChild(row);scrollChat();
+    let evH=`<span style="color:var(--t2)">${events.length} events · most recent:</span><br>`;
+    events.slice(-3).reverse().forEach(ev=>{const col=tc2[ev.event_type]||CC.c;evH+=`<span style="color:${col}">${(ev.event_type||'—').replace(/_/g,' ').toUpperCase()}</span> <span style="color:var(--t3)">t=${ev.t} · STA/LTA ${(ev.stalta||0).toFixed(3)} · ${(ev.freq_hz||0).toFixed(3)}Hz</span><br>`;});
+    appendBubble(evH);
     remember('assistant',`Showed seismic events. ${events.length} detected.`);
-  }).catch(()=>appendBubble(`Couldn't reach <code>/history</code>. Is mission_engine.py running?`));
+  }).catch(()=>appendBubble(`Cannot reach <code>/history</code>.`));
 }
 function appendHealthSummary(){
   fetch('/history?format=summary').then(r=>r.json()).then(d=>{
     const m=live.models||{},lstm=m.lstm||{},cnn=m.cnn||{},trans=m.transformer||{},gnn=m.gnn||{};
-    const score=live.anomaly_score||0,sc2=score>.2?'var(--crit)':score>.05?'var(--warn)':'var(--glow2)';
+    const score=live.anomaly_score||0,sc=score>.2?'var(--red)':score>.05?'var(--amber)':'var(--green)';
     const row=document.createElement('div');row.className='msg-row ai';
-    row.innerHTML=`<div class="avatar ai">AI</div><div class="bwrap" style="max-width:480px;width:100%">
+    row.innerHTML=`<div class="avatar ai">AI</div><div class="bwrap" style="width:100%">
       <div class="bubble cardb">
-        <div style="display:flex;align-items:center;gap:9px;margin-bottom:5px">
-          <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:var(--white)">Mission Health</div>
-          <div style="font-family:'DM Mono',monospace;font-size:9px;padding:3px 9px;border-radius:20px;background:${live.status==='ANOMALY'?'rgba(255,60,90,.15)':live.status==='WARNING'?'rgba(255,184,0,.12)':'rgba(0,255,157,.08)'};color:${sc2};border:1px solid ${sc2}40">${live.status||'NOMINAL'}</div>
-        </div>
-        <div style="font-family:'DM Mono',monospace;font-size:8.5px;color:var(--sub);margin-bottom:7px">${d.total_packets||0} pkts · ${d.seismic_events||0} seismic · ${d.session_duration_s||0}s</div>
+        <div style="font-family:var(--disp);font-size:10px;font-weight:700;color:var(--cyan);letter-spacing:3px;margin-bottom:5px">MISSION HEALTH</div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:7px">${d.total_packets||0} pkts · ${d.seismic_events||0} seismic · ${d.session_duration_s||0}s</div>
         <hr class="bhr"/>
         <div class="card-g">
-          <div class="kv"><div class="kv-l">SCORE</div><div class="kv-v" style="color:${sc2}">${score.toFixed(4)}</div></div>
-          <div class="kv"><div class="kv-l">STA/LTA</div><div class="kv-v" style="color:${lstm.stalta_ratio>=3?'var(--crit)':lstm.stalta_ratio>=1.5?'var(--warn)':'var(--glow)'}">${(lstm.stalta_ratio||0).toFixed(3)}</div></div>
-          <div class="kv"><div class="kv-l">CNN EVENT</div><div class="kv-v" style="color:var(--purple);font-size:11px">${(cnn.event_type||'none').replace(/_/g,' ')}</div></div>
-          <div class="kv"><div class="kv-l">TREND</div><div class="kv-v" style="color:var(--warn)">${trans.trend||'STABLE'}</div></div>
-          <div class="kv"><div class="kv-l">MAX SCORE</div><div class="kv-v" style="color:var(--crit)">${(d.max_score||0).toFixed(4)}</div></div>
-          <div class="kv"><div class="kv-l">COUPLING</div><div class="kv-v" style="font-size:11px;color:${gnn.seismic_thermal_coupling?'var(--crit)':'var(--glow2)'}">${gnn.seismic_thermal_coupling?'ACTIVE':'none'}</div></div>
+          <div class="kv"><div class="kv-l">SCORE</div><div class="kv-v" style="color:${sc}">${score.toFixed(4)}</div></div>
+          <div class="kv"><div class="kv-l">STA/LTA</div><div class="kv-v" style="color:${lstm.stalta_ratio>=3?'var(--red)':lstm.stalta_ratio>=1.5?'var(--amber)':'var(--cyan)'}">${(lstm.stalta_ratio||0).toFixed(3)}</div></div>
+          <div class="kv"><div class="kv-l">CNN EVENT</div><div class="kv-v" style="color:var(--purple);font-size:10px">${(cnn.event_type||'none').replace(/_/g,' ')}</div></div>
+          <div class="kv"><div class="kv-l">TREND</div><div class="kv-v" style="color:var(--amber)">${trans.trend||'STABLE'}</div></div>
+          <div class="kv"><div class="kv-l">MAX SCORE</div><div class="kv-v" style="color:var(--red)">${(d.max_score||0).toFixed(4)}</div></div>
+          <div class="kv"><div class="kv-l">COUPLING</div><div class="kv-v" style="font-size:10px;color:${gnn.seismic_thermal_coupling?'var(--red)':'var(--green)'}">${gnn.seismic_thermal_coupling?'ACTIVE':'NONE'}</div></div>
         </div>
-        <hr class="bhr"/>
-        <div style="font-family:'DM Mono',monospace;font-size:8.5px;color:var(--sub)">Criticals: <span style="color:var(--crit)">${d.critical_count||0}</span> · Warnings: <span style="color:var(--warn)">${d.warning_count||0}</span> · Seismic: <span style="color:var(--purple)">${d.seismic_events||0}</span></div>
       </div><div class="mts">${ts()}</div></div>`;
     chatEl().appendChild(row);scrollChat();
-    remember('assistant',`Health summary: status ${live.status}, score ${score.toFixed(4)}.`);
-  }).catch(()=>appendBubble(`Couldn't reach <code>/history</code>. Is engine running?`));
+    remember('assistant',`Health summary. Status: ${live.status}, score: ${score.toFixed(4)}.`);
+  }).catch(()=>appendBubble(`Cannot reach <code>/history</code>.`));
 }
 function smartChart(lo){
-  if(/temp/i.test(lo))appendTempChart();
-  else if(/accel|seismic|vibr/i.test(lo))appendAccelChart();
-  else if(/score|anomaly/i.test(lo))appendScoreChart();
-  else if(/event|quake/i.test(lo))appendSeismicChart();
-  else{appendTempChart();setTimeout(appendScoreChart,200);appendBubble(`Showed temperature + score. Also: <code>acceleration</code>, <code>seismic events</code>, <code>health summary</code>.`);}
+  if(/temp/i.test(lo)) appendTempChart();
+  else if(/accel|seismic/i.test(lo)) appendAccelChart();
+  else if(/score|anomaly/i.test(lo)) appendScoreChart();
+  else if(/event|quake/i.test(lo)) appendSeismicChart();
+  else{appendTempChart();setTimeout(appendScoreChart,200);}
 }
 function doReport(fmt){
-  appendBubble(`Generating <strong>${fmt.toUpperCase()} report</strong>… (30–60s)`);
+  appendBubble(`Generating <strong>${fmt.toUpperCase()}</strong> report… (30-60s)`);
   fetch('/report/'+fmt).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.blob();}).then(blob=>{
     const url=URL.createObjectURL(blob),a=document.createElement('a');
     const fn=`mission_report_${new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)}.${fmt}`;
     a.href=url;a.download=fn;a.click();URL.revokeObjectURL(url);
     if(fmt==='html'){const rd=new FileReader();rd.onload=()=>{const w=window.open('','_blank');w.document.write(rd.result);w.document.close();};rd.readAsText(blob);}
-    appendBubble(`✓ <strong>${fn}</strong> downloaded.`);remember('assistant',`Generated ${fmt} report.`);
+    appendBubble(`✓ <code>${fn}</code> downloaded.`);remember('assistant',`Generated ${fmt} report.`);
   }).catch(e=>appendBubble(`Report failed: <code>${e.message}</code>`));
 }
 
-// ══════════════════════ MULTI-TURN /ask ══════════════════════
+// ══════════════ /ask ══════════════
+let lastImgCtx={};
 function doAsk(question){
   showTyping().then(id=>{
     removeTyping(id);
-    const fullQ=question+memCtx();
-    fetch(`/ask?question=${encodeURIComponent(fullQ)}`).then(r=>r.json()).then(d=>{
+    const q=question.toLowerCase();
+    const isImgQ=/image|photo|picture|person|dog|who|name|identify|this image|describe.*image/i.test(q)&&lastImgCtx.image_b64;
+    if(isImgQ){doImgFollowup(question);return;}
+    fetch(`/ask?question=${encodeURIComponent(question+memCtx())}`).then(r=>r.json()).then(d=>{
       let html=mdToHtml(d.response||'No response.');
-      html+=`<hr class="bhr"><span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--sub)">via <strong style="color:var(--glow)">${d.model_used||'?'}</strong> · score <code>${(d.anomaly_score||0).toFixed(4)}</code> · ${live.status||'—'}</span>`;
-      appendBubble(html);remember('assistant',(d.response||'').substring(0,350));
-    }).catch(e=>appendBubble(`<span style="color:var(--crit)">${e.message}</span>`));
+      html+=`<hr class="bhr"><span style="font-family:var(--mono);font-size:8px;color:var(--t3)">via <strong style="color:var(--cyan)">${d.model_used||'?'}</strong> · score <code>${(d.anomaly_score||0).toFixed(4)}</code> · ${live.status||'—'}</span>`;
+      appendBubble(html);remember('assistant',(d.response||'').substring(0,120));
+    }).catch(e=>appendBubble(`<span style="color:var(--red)">${e.message}</span>`));
   });
 }
-
-// ══════════════════════ MARKDOWN ══════════════════════
-function mdToHtml(t){
-  if(!t)return'';
-  return t.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/^\s*[-•*]\s+/gm,'• ').replace(/\*\*/g,'').replace(/(?<!\w)\*(?!\w)/g,'').replace(/\n{2,}/g,'<br><br>').replace(/\n/g,'<br>').trim();
+async function doImgFollowup(question){
+  try{
+    const r=await fetch('/ask?question='+encodeURIComponent(question+'\n\nContext: The operator is asking about this image. Previous analysis: '+lastImgCtx.analysis?.substring(0,400)),{headers:authHeaders(),credentials:'include'});
+    const d=await r.json();
+    appendBubble(mdToHtml(d.response||'No response.'));
+  }catch(e){appendBubble(`<span style="color:var(--red)">${e.message}</span>`);}
 }
+function mdToHtml(t){if(!t)return'';return t.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/^\s*[-•*]\s+/gm,'• ').replace(/\*\*/g,'').replace(/(?<!\w)\*(?!\w)/g,'').replace(/\n{2,}/g,'<br><br>').replace(/\n/g,'<br>').trim();}
 
-// ══════════════════════ IMAGE ANALYSIS ══════════════════════
+// ══════════════ DIAGNOSE ══════════════
 function runDiagnosis(){
-  hideWelcome();
-  appendUser('🔬 Run full anomaly diagnosis');
+  hideWelcome();appendUser('🔬 Run full anomaly diagnosis');
   showTyping().then(id=>{
     removeTyping(id);
-    fetch('/diagnose').then(r=>r.json()).then(d=>{
-      const diag=d.diagnosis||{};
-      const score=(d.anomaly_score||0).toFixed(4);
-      const sc=d.anomaly_score>.2?'var(--crit)':d.anomaly_score>.05?'var(--warn)':'var(--glow2)';
-      const riskCol=diag.risk==='CRITICAL'?'var(--crit)':diag.risk==='HIGH'?'var(--crit)':diag.risk==='MEDIUM'?'var(--warn)':diag.risk==='MEDIUM-HIGH'?'var(--warn)':'var(--glow2)';
-
-      // Format causes
-      let causesHtml='';
-      (diag.causes||[]).forEach(c=>{
-        causesHtml+=`<div style="display:flex;gap:8px;margin:3px 0">
-          <span style="color:var(--warn);flex-shrink:0">›</span>
-          <span>${c}</span></div>`;
-      });
-
-      // Format actions
-      let actionsHtml='';
-      (diag.actions||[]).forEach(a=>{
-        const isImmediate=/IMMEDIATE|ALERT|CRITICAL/i.test(a);
-        actionsHtml+=`<div style="display:flex;gap:8px;margin:4px 0;${isImmediate?'font-weight:600':''}">
-          <span style="color:${isImmediate?'var(--crit)':'var(--glow)'};flex-shrink:0">${isImmediate?'⚡':'✓'}</span>
-          <span style="color:${isImmediate?'var(--white)':'var(--body)'}">${a}</span></div>`;
-      });
-
-      // Top sensors
-      let sensorsHtml='';
-      (d.top_sensors||[]).forEach(([name,val])=>{
-        const pct=Math.min(val*1000,100);
-        sensorsHtml+=`<div style="margin:3px 0">
-          <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px">
-            <span style="color:var(--body)">${name}</span>
-            <span style="color:var(--warn)">${val.toFixed(5)}</span>
-          </div>
-          <div style="height:3px;background:var(--rim2);border-radius:2px">
-            <div style="width:${pct}%;height:100%;background:var(--warn);border-radius:2px"></div>
-          </div></div>`;
-      });
-
+    fetch('/diagnose',{headers:authHeaders(),credentials:'include'}).then(r=>r.json()).then(d=>{
+      const diag=d.diagnosis||{},score=(d.anomaly_score||0).toFixed(4);
+      const sc=d.anomaly_score>.2?'var(--red)':d.anomaly_score>.05?'var(--amber)':'var(--green)';
+      const rCol=diag.risk==='CRITICAL'||diag.risk==='HIGH'?'var(--red)':diag.risk?.includes('MEDIUM')?'var(--amber)':'var(--green)';
+      let causesHtml='',actionsHtml='',sensorsHtml='';
+      (diag.causes||[]).forEach(c=>{causesHtml+=`<div class="diag-item"><span class="diag-arrow">›</span><span>${c}</span></div>`;});
+      (diag.actions||[]).forEach(a=>{const isImm=/IMMEDIATE|ALERT|CRITICAL/i.test(a);actionsHtml+=`<div class="diag-item"><span class="diag-arrow${isImm?' r':''}">›</span><span style="color:${isImm?'var(--red)':'var(--t1)'}">${a}</span></div>`;});
+      (d.top_sensors||[]).forEach(([n,v])=>{const pct=Math.min(v*500,100);sensorsHtml+=`<div class="sensor-bar-wrap"><div class="sensor-bar-hd"><span style="color:var(--t2)">${n}</span><span style="color:var(--amber)">${v.toFixed(5)}</span></div><div class="sensor-bar-track"><div class="sensor-bar-fill" style="width:${pct}%"></div></div></div>`;});
       const row=document.createElement('div');row.className='msg-row ai';
-      row.innerHTML=`<div class="avatar ai">AI</div>
-        <div class="bwrap" style="max-width:640px;width:100%">
-          <div class="bubble ai" style="padding:0;overflow:hidden">
-
-            <!-- Header -->
-            <div style="padding:14px 16px;border-bottom:1px solid var(--rim);background:rgba(0,0,0,.15)">
-              <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:var(--white);margin-bottom:5px">
-                🔬 ANOMALY DIAGNOSIS
-              </div>
-              <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--sub)">${diag.title||'—'}</div>
-              <div style="display:flex;gap:10px;margin-top:7px;align-items:center">
-                <span style="font-family:'DM Mono',monospace;font-size:9px;padding:3px 9px;border-radius:20px;
-                  background:rgba(0,0,0,.3);border:1px solid ${sc};color:${sc}">
-                  Score: ${score}
-                </span>
-                <span style="font-family:'DM Mono',monospace;font-size:9px;padding:3px 9px;border-radius:20px;
-                  background:rgba(0,0,0,.3);border:1px solid ${riskCol};color:${riskCol}">
-                  Risk: ${diag.risk||'—'}
-                </span>
-                <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--sub)">
-                  Cause: <strong style="color:var(--warn)">${d.dominant_cause||'—'}</strong>
-                </span>
-              </div>
+      row.innerHTML=`<div class="avatar ai">AI</div><div class="bwrap" style="width:100%">
+        <div class="diag-card">
+          <div class="diag-hd">
+            <div class="diag-title">🔬 ANOMALY DIAGNOSIS</div>
+            <div style="font-family:var(--mono);font-size:8.5px;color:var(--t2);margin-top:2px">${diag.title||'—'}</div>
+            <div class="diag-badges">
+              <span class="mcard-badge" style="background:rgba(0,0,0,.3);border:1px solid ${sc};color:${sc};">SCORE ${score}</span>
+              <span class="mcard-badge" style="background:rgba(0,0,0,.3);border:1px solid ${rCol};color:${rCol};">RISK: ${diag.risk||'—'}</span>
+              <span class="mcard-badge" style="color:var(--amber);border-color:rgba(255,170,0,.2)">CAUSE: ${d.dominant_cause?.toUpperCase()||'—'}</span>
             </div>
-
-            <!-- Top anomalous sensors -->
-            ${sensorsHtml?`<div style="padding:12px 16px;border-bottom:1px solid var(--rim)">
-              <div style="font-family:'DM Mono',monospace;font-size:8px;letter-spacing:2px;color:var(--sub);margin-bottom:8px">TOP ANOMALOUS SENSORS</div>
-              ${sensorsHtml}
-            </div>`:''}
-
-            <!-- Causes -->
-            <div style="padding:12px 16px;border-bottom:1px solid var(--rim)">
-              <div style="font-family:'DM Mono',monospace;font-size:8px;letter-spacing:2px;color:var(--glow);margin-bottom:8px">🔍 POSSIBLE CAUSES</div>
-              <div style="font-size:13px;line-height:1.65">${causesHtml}</div>
-            </div>
-
-            <!-- Actions -->
-            <div style="padding:12px 16px">
-              <div style="font-family:'DM Mono',monospace;font-size:8px;letter-spacing:2px;color:var(--glow2);margin-bottom:8px">✅ RECOMMENDED ACTIONS</div>
-              <div style="font-size:13px;line-height:1.65">${actionsHtml}</div>
-            </div>
-
           </div>
-          <div class="mts">${ts()}</div>
-        </div>`;
+          <div class="diag-body">
+            ${sensorsHtml?`<div class="diag-section"><div class="diag-sec-lbl">// TOP ANOMALOUS SENSORS</div>${sensorsHtml}</div>`:''}
+            <div class="diag-section"><div class="diag-sec-lbl">// POSSIBLE CAUSES</div>${causesHtml}</div>
+            <div class="diag-section"><div class="diag-sec-lbl">// RECOMMENDED ACTIONS</div>${actionsHtml}</div>
+          </div>
+        </div>
+        <div class="mts">${ts()}</div></div>`;
       chatEl().appendChild(row);scrollChat();
-      remember('assistant', `Diagnosis: ${diag.title}. Risk: ${diag.risk}.`);
-    }).catch(e=>appendBubble(`Diagnosis failed: <code>${e.message}</code>`));
+      remember('assistant','Ran diagnosis: '+diag.title);
+    }).catch(()=>appendBubble(`Cannot reach <code>/diagnose</code>.`));
   });
 }
 
-function imgType(t){return/seismo/i.test(t)?'seismogram':/satell|surface/i.test(t)?'satellite_image':/anomaly/i.test(t)?'anomaly_plot':'sensor_chart';}
-
-function autoDetectType(filename){
-  // Detect from filename
-  const f=filename.toLowerCase();
-  if(/seismo|waveform|wave/.test(f))   return 'seismogram';
-  if(/satell|surface|terrain|moon|lunar/.test(f)) return 'satellite_image';
-  if(/anomal|alert|detect/.test(f))    return 'anomaly_plot';
-  if(/sensor|chart|graph|plot|temp|accel/.test(f)) return 'sensor_chart';
-  // Default: treat as general image — llava will describe it accurately
-  return 'sensor_chart';
-}
+// ══════════════ IMAGE ══════════════
+function autoType(f){const n=f.toLowerCase();return/seismo/i.test(n)?'seismogram':/satell|surface|lunar|moon/i.test(n)?'satellite_image':/anomal/i.test(n)?'anomaly_plot':'sensor_chart';}
 function handleImg(e){
   const file=e.target.files[0];if(!file)return;
   const reader=new FileReader();
   reader.onload=ev=>{
     hideWelcome();
-    // Auto-detect image type from filename
-    const fname=file.name.toLowerCase();
-    let autoType='sensor_chart';
-    if(/seismo|waveform|wave/i.test(fname))       autoType='seismogram';
-    else if(/satell|surface|terrain|lunar/i.test(fname)) autoType='satellite_image';
-    else if(/anomaly|alert|plot/i.test(fname))     autoType='anomaly_plot';
-
-    // Show image in chat immediately
     const r=document.createElement('div');r.className='msg-row user';r.id='img_pend';
-    r.innerHTML=`<div class="avatar user">U</div><div class="bwrap"><div class="bubble user" style="padding:9px"><img src="${ev.target.result}" style="max-width:190px;max-height:120px;border-radius:7px;display:block;margin-bottom:5px"><span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--sub)">${file.name} · ${(file.size/1024).toFixed(1)} KB · ${autoType.replace(/_/g,' ')}</span></div><div class="mts">${ts()}</div></div>`;
+    r.innerHTML=`<div class="avatar user">U</div><div class="bwrap"><div class="bubble user" style="padding:7px"><img src="${ev.target.result}" style="max-width:180px;max-height:110px;border-radius:3px;display:block;margin-bottom:4px"><span style="font-family:var(--mono);font-size:8px;color:var(--t3)">${file.name}</span></div><div class="mts">${ts()}</div></div>`;
     chatEl().appendChild(r);scrollChat();
-
-    // Analyze immediately — no question asked
-    const b64=ev.target.result.split(',')[1];
-    doImgAnalysis(file, b64, autoType, '');
+    doImgAnalysis(file,ev.target.result.split(',')[1],autoType(file.name),'');
   };
   reader.readAsDataURL(file);e.target.value='';
 }
 function clearPending(){const r=document.getElementById('img_pend');if(r)r.remove();}
-
 function parseSecs(raw){
   const text=raw.replace(/\*\*/g,'').replace(/\*/g,'').trim();
   const s={DESCRIPTION:'',ANOMALIES:'',CORRELATION:'',RECOMMENDATION:''};
@@ -907,72 +1251,56 @@ function parseSecs(raw){
   for(const[k,p] of Object.entries(pats)){const m=text.match(p);if(m)pos.push({k,i:text.search(p)+m[0].length});}
   pos.sort((a,b)=>a.i-b.i);
   if(!pos.length){s.DESCRIPTION=text;return s;}
-  pos.forEach((p,idx)=>{
-    let c=text.slice(p.i);
-    if(idx+1<pos.length){const allPat=new RegExp(Object.values(pats).map(r=>r.source).join('|'),'i');const nm=c.match(allPat);if(nm&&nm.index>0)c=c.slice(0,nm.index);}
-    s[p.k]=c.trim();
-  });
+  pos.forEach((p,idx)=>{let c=text.slice(p.i);if(idx+1<pos.length){const allP=new RegExp(Object.values(pats).map(r=>r.source).join('|'),'i');const nm=c.match(allP);if(nm&&nm.index>0)c=c.slice(0,nm.index);}s[p.k]=c.trim();});
   return s;
 }
-function renderC(text){
-  let h='';
-  text.split('\n').forEach(line=>{
-    const t=line.trim();if(!t){h+='<br>';return;}
-    if(/^[-•]\s+/.test(t))h+=`<div style="display:flex;gap:7px;margin:2px 0"><span style="color:var(--glow);flex-shrink:0">›</span><span>${esc(t.replace(/^[-•]\s+/,''))}</span></div>`;
-    else h+=`<p style="margin:0 0 5px">${esc(t)}</p>`;
-  });
-  return h;
-}
+function renderC(text){let h='';text.split('\n').forEach(line=>{const t=line.trim();if(!t){h+='<br>';return;}if(/^[-•]\s+/.test(t))h+=`<div style="display:flex;gap:6px;margin:2px 0"><span style="color:var(--cyan);flex-shrink:0">›</span><span>${esc(t.replace(/^[-•]\s+/,''))}</span></div>`;else h+=`<p style="margin:0 0 4px;font-size:9px">${esc(t)}</p>`;});return h;}
 function doImgAnalysis(file,b64,iType,userText){
   showTyping().then(id=>{
     removeTyping(id);
     const fd=new FormData();fd.append('file',file);fd.append('image_type',iType);
-    fetch(`/analyze-image?image_type=${encodeURIComponent(iType)}`,{method:'POST',body:fd}).then(r=>r.json()).then(d=>{
+    fetch(`/analyze-image?image_type=${encodeURIComponent(iType)}`,{method:'POST',body:fd,credentials:'include'}).then(r=>r.json()).then(d=>{
       const diag=d.diagnostics||{},analysis=d.analysis||'',ctx=d.mission_context||{};
+      lastImgCtx={image_b64:b64,analysis,filename:file.name};
       if(analysis.startsWith('NO_VISION_MODEL')){
         const tel=analysis.split('\n').slice(2).join('\n');
-        const row=document.createElement('div');row.className='msg-row ai';
-        row.innerHTML=`<div class="avatar ai">AI</div><div class="bwrap" style="max-width:500px;width:100%"><div class="bubble ai" style="padding:0;overflow:hidden">
-          <div style="display:flex;gap:11px;padding:11px 13px;border-bottom:1px solid var(--rim);background:rgba(0,0,0,.12)">
-            <img src="data:image/*;base64,${b64}" style="width:62px;height:44px;object-fit:cover;border-radius:7px;border:1px solid var(--rim2);flex-shrink:0"/>
-            <div><div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--white);margin-bottom:5px">${esc(file.name)}</div>
-              <div style="background:rgba(255,184,0,.09);border:1px solid rgba(255,184,0,.28);border-radius:7px;padding:8px 11px">
-                <div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:800;color:var(--warn);margin-bottom:3px">⚠ No Vision Model</div>
-                <div style="font-family:'DM Mono',monospace;font-size:10px;line-height:1.6">Run: <code style="color:var(--glow)">ollama pull llava</code></div>
-              </div>
-            </div>
-          </div>
-          <div style="padding:11px 13px;font-family:'DM Mono',monospace;font-size:10px;line-height:1.7;color:var(--body)">
-            <div style="font-size:7.5px;letter-spacing:2px;color:var(--sub);margin-bottom:5px">LIVE TELEMETRY — UNRELATED TO IMAGE</div>
-            ${tel.replace(/\n/g,'<br>')}
-          </div>
-        </div><div class="mts">${ts()}</div></div>`;
-        chatEl().appendChild(row);scrollChat();return;
+        appendBubble(`<span style="color:var(--amber)">⚠ NO VISION MODEL</span><br>Run: <code>ollama pull llava</code><hr class="bhr"><span style="color:var(--t3);font-size:8.5px">LIVE TELEMETRY (unrelated to image):<br>${tel.replace(/\n/g,'<br>')}</span>`);
+        return;
       }
       const secs=parseSecs(analysis);
-      const sm={DESCRIPTION:{col:'var(--glow)',icon:'🔍',lbl:'Description'},ANOMALIES:{col:'var(--warn)',icon:'⚠',lbl:'Anomalies'},CORRELATION:{col:'var(--glow2)',icon:'📡',lbl:'Correlation'},RECOMMENDATION:{col:'var(--crit)',icon:'✅',lbl:'Recommendation'}};
+      const sm={DESCRIPTION:{col:'var(--cyan)',icon:'›'},ANOMALIES:{col:'var(--amber)',icon:'⚠'},CORRELATION:{col:'var(--green)',icon:'◉'},RECOMMENDATION:{col:'var(--red)',icon:'✓'}};
       let sh='';
-      for(const[k,meta] of Object.entries(sm)){if(secs[k]?.trim())sh+=`<div style="margin-bottom:11px"><div style="font-family:'DM Mono',monospace;font-size:8px;letter-spacing:2px;color:${meta.col};margin-bottom:4px;display:flex;align-items:center;gap:5px"><span>${meta.icon}</span><span>${meta.lbl.toUpperCase()}</span></div><div style="font-size:13px;color:var(--body);line-height:1.65">${renderC(secs[k])}</div></div>`;}
-      if(!sh)sh=`<div style="font-size:13px;line-height:1.65">${renderC(analysis)}</div>`;
-      const mp=diag.has_vision_model?`<span style="background:rgba(0,255,157,.1);color:var(--glow2);border:1px solid rgba(0,255,157,.25);border-radius:20px;padding:2px 8px;font-size:8.5px">llava</span>`:`<span style="background:rgba(255,184,0,.1);color:var(--warn);border:1px solid rgba(255,184,0,.3);border-radius:20px;padding:2px 8px;font-size:8.5px">llama3 fallback</span>`;
+      for(const[k,meta] of Object.entries(sm)){if(secs[k]?.trim())sh+=`<div style="margin-bottom:9px"><div style="font-family:var(--mono);font-size:7.5px;letter-spacing:2px;color:${meta.col};margin-bottom:4px">${meta.icon} ${k}</div><div style="font-size:9px;line-height:1.65">${renderC(secs[k])}</div></div>`;}
+      if(!sh)sh=`<div style="font-size:9px;line-height:1.65">${renderC(analysis)}</div>`;
+      const mp=diag.has_vision_model?`<span class="mcard-badge bn">llava</span>`:`<span class="mcard-badge bw">llama3 fallback</span>`;
       const row=document.createElement('div');row.className='msg-row ai';
-      row.innerHTML=`<div class="avatar ai">AI</div><div class="bwrap" style="max-width:620px;width:100%"><div class="bubble ai" style="padding:0;overflow:hidden">
-        <div style="display:flex;gap:11px;padding:11px 13px;border-bottom:1px solid var(--rim);background:rgba(0,0,0,.1)">
-          <img src="data:image/*;base64,${b64}" style="width:66px;height:46px;object-fit:cover;border-radius:7px;border:1px solid var(--rim2);flex-shrink:0"/>
-          <div style="flex:1;min-width:0"><div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--white);margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(file.name)}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${mp}</div></div>
+      row.innerHTML=`<div class="avatar ai">AI</div><div class="bwrap" style="width:100%"><div class="bubble ai" style="padding:0;overflow:hidden">
+        <div style="display:flex;gap:10px;padding:9px 11px;border-bottom:1px solid var(--rim);background:rgba(0,212,255,.03)">
+          <img src="data:image/*;base64,${b64}" style="width:60px;height:42px;object-fit:cover;border-radius:3px;border:1px solid var(--rim2);flex-shrink:0"/>
+          <div style="flex:1;min-width:0"><div style="font-family:var(--mono);font-size:9px;color:var(--t1);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(file.name)}</div><div style="display:flex;gap:5px">${mp}</div></div>
         </div>
-        <div style="padding:13px 15px">${sh}</div>
-        <div style="padding:5px 15px 9px;border-top:1px solid var(--rim);font-family:'DM Mono',monospace;font-size:8.5px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap">
-          <span>score <strong style="color:${ctx.anomaly_score>.2?'var(--crit)':ctx.anomaly_score>.05?'var(--warn)':'var(--glow2)'}">${(ctx.anomaly_score||0).toFixed(4)}</strong></span>
-          <span>${ctx.status||'—'}</span>
-          <span>STA/LTA <strong style="color:${ctx.stalta_triggered?'var(--crit)':'var(--sub)'}">${ctx.stalta_triggered?'TRIGGERED':'idle'}</strong></span>
-          ${d.stored_for_report?'<span style="color:var(--glow2)">✓ in report queue</span>':''}
-        </div>
+        <div style="padding:10px 12px">${sh}</div>
+        <div style="padding:4px 12px 8px;border-top:1px solid var(--rim);font-family:var(--mono);font-size:8px;color:var(--t3)">score <strong style="color:${ctx.anomaly_score>.2?'var(--red)':ctx.anomaly_score>.05?'var(--amber)':'var(--green)'}">${(ctx.anomaly_score||0).toFixed(4)}</strong> · ${ctx.status||'—'} · STA/LTA <strong>${ctx.stalta_triggered?'<span style="color:var(--red)">TRIGGERED</span>':'idle'}</strong>${d.stored_for_report?' · <span style="color:var(--green)">✓ in report queue</span>':''}</div>
       </div><div class="mts">${ts()}</div></div>`;
       chatEl().appendChild(row);scrollChat();
-      remember('assistant',`Analyzed image ${file.name}.`);
-    }).catch(e=>appendBubble(`<span style="color:var(--crit)">Image analysis failed: ${e.message}</span>`));
+      remember('assistant','Analyzed image '+file.name+'.');
+    }).catch(e=>appendBubble(`<span style="color:var(--red)">Image analysis failed: ${e.message}</span>`));
   });
+}
+
+// ══════════════ INIT ══════════════
+checkAuth().then(ok=>{
+  if(!ok) return;
+  wsConnect();
+  setTimeout(loadHistory,600);
+});
+setInterval(pollSeis,12000);setTimeout(pollSeis,3000);
+function pollSeis(){
+  fetch('/history?format=events').then(r=>r.json()).then(d=>{
+    const n=d.events?.length||0;
+    document.getElementById('st_seis').textContent=n;
+    if(n>0){const last=d.events[n-1];document.getElementById('st_seis').textContent=n;}
+  }).catch(()=>{});
 }
 </script>
 </body>

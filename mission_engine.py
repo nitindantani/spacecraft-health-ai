@@ -16,10 +16,34 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from scipy.signal import butter, filtfilt
 
-from fastapi import FastAPI, WebSocket, UploadFile, File, Query
+from fastapi import FastAPI, WebSocket, UploadFile, File, Query, Depends, HTTPException, status, Response, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
+from typing import Optional
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+
+# ── Database + Auth — loaded from auth_system/ folder ─────────
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'auth_system'))
+try:
+    from database import (
+        init_db, get_db, SessionLocal,
+        create_user, get_user, authenticate_user,
+        save_message, get_chat_history,
+        save_anomaly_event, get_anomaly_history,
+    )
+    from auth import (
+        create_access_token, get_current_user_optional,
+        get_current_user_required,
+    )
+    DB_AVAILABLE = True
+    print("[DB] Database modules loaded from auth_system/")
+except ImportError as _dbe:
+    DB_AVAILABLE = False
+    print(f"[DB] Database not available: {_dbe}")
+    print("[DB] Run: pip install sqlalchemy python-jose[cryptography]")
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -1923,15 +1947,261 @@ app = FastAPI(title="Spacecraft Health AI", version="3.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
-@app.get("/")
-def serve_dashboard():
-    from fastapi.responses import FileResponse as FR
-    resp = FR("dashboard/index.html")
-    # Prevent browser caching so updates always load fresh
+# ================================================================
+# SERVE LOGIN PAGE
+# ================================================================
+@app.get("/login")
+def serve_login():
+    resp = FileResponse("auth_system/login.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    resp.headers["Pragma"]        = "no-cache"
-    resp.headers["Expires"]       = "0"
     return resp
+
+@app.get("/dashboard")
+def serve_dashboard_auth():
+    resp = FileResponse("dashboard/index.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+# ================================================================
+# REQUEST/RESPONSE MODELS
+# ================================================================
+class RegisterRequest(BaseModel):
+    username:  str
+    password:  str
+    email:     Optional[str] = None
+    full_name: Optional[str] = None
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class SaveMessageRequest(BaseModel):
+    role:           str
+    message:        str
+    message_type:   str = "text"
+    anomaly_score:  Optional[float] = None
+    mission_status: Optional[str]   = None
+
+
+# ================================================================
+# AUTH ENDPOINTS
+# ================================================================
+
+@app.post("/auth/register")
+def register(req: RegisterRequest, response: Response):
+    """Register a new user account."""
+    if not DB_AVAILABLE:
+        raise HTTPException(503, "Database not available")
+    if len(req.username) < 3:
+        raise HTTPException(400, "Username must be at least 3 characters")
+    if len(req.password) < 6:
+        raise HTTPException(400, "Password must be at least 6 characters")
+    db = SessionLocal()
+    try:
+        user = create_user(db, req.username, req.password, req.email, req.full_name)
+        if not user:
+            raise HTTPException(400, "Username already exists")
+        token = create_access_token({"sub": user.username, "role": user.role})
+        response.set_cookie(
+            key="ilsa_token", value=token,
+            httponly=True, samesite="lax",
+            max_age=86400  # 24 hours
+        )
+        print(f"[AUTH] New user registered: {user.username}")
+        return {
+            "success":  True,
+            "token":    token,
+            "username": user.username,
+            "role":     user.role,
+            "message":  f"Welcome, {user.username}!",
+        }
+    finally:
+        db.close()
+
+
+@app.post("/auth/login")
+def login(req: LoginRequest, response: Response):
+    """Login with username + password."""
+    if not DB_AVAILABLE:
+        raise HTTPException(503, "Database not available")
+    db = SessionLocal()
+    try:
+        user = authenticate_user(db, req.username, req.password)
+        if not user:
+            raise HTTPException(401, "Invalid username or password")
+        if not user.is_active:
+            raise HTTPException(403, "Account is disabled")
+        token = create_access_token({"sub": user.username, "role": user.role})
+        response.set_cookie(
+            key="ilsa_token", value=token,
+            httponly=True, samesite="lax",
+            max_age=86400
+        )
+        print(f"[AUTH] Login: {user.username}")
+        return {
+            "success":   True,
+            "token":     token,
+            "username":  user.username,
+            "full_name": user.full_name,
+            "role":      user.role,
+            "message":   f"Welcome back, {user.full_name or user.username}!",
+        }
+    finally:
+        db.close()
+
+
+@app.post("/auth/logout")
+def logout(response: Response):
+    """Clear auth cookie."""
+    response.delete_cookie("ilsa_token")
+    return {"success": True, "message": "Logged out"}
+
+
+@app.get("/auth/me")
+def me(username: str = Depends(get_current_user_required)):
+    """Get current user info."""
+    if not DB_AVAILABLE:
+        return {"username": username}
+    db = SessionLocal()
+    try:
+        user = get_user(db, username)
+        if not user:
+            raise HTTPException(404, "User not found")
+        return {
+            "username":   user.username,
+            "full_name":  user.full_name,
+            "email":      user.email,
+            "role":       user.role,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "last_login": user.last_login.isoformat() if user.last_login else None,
+        }
+    finally:
+        db.close()
+
+
+# ================================================================
+# CHAT HISTORY ENDPOINTS
+# ================================================================
+
+@app.post("/chat/save")
+def chat_save(req: SaveMessageRequest,
+              username: str = Depends(get_current_user_required)):
+    """Save a chat message to database."""
+    if not DB_AVAILABLE:
+        return {"saved": False}
+    db = SessionLocal()
+    try:
+        user = get_user(db, username)
+        if not user:
+            raise HTTPException(404, "User not found")
+        msg = save_message(
+            db, user.id, req.role, req.message,
+            req.message_type, req.anomaly_score, req.mission_status
+        )
+
+        # Also save anomaly events automatically
+        if req.mission_status in ("WARNING", "ANOMALY") and req.anomaly_score:
+            m = current_state.get("models", {})
+            d = diagnose_anomaly(current_state)
+            save_anomaly_event(
+                db, user.id,
+                event_type    = m.get("cnn", {}).get("event_type", "unknown"),
+                score         = req.anomaly_score,
+                status        = req.mission_status,
+                cause         = m.get("lstm", {}).get("dominant_cause"),
+                cnn_event     = m.get("cnn", {}).get("event_type"),
+                stalta        = m.get("lstm", {}).get("stalta_ratio"),
+                sensors       = {k: round(float(v), 4) for k, v in current_state.get("sensors", {}).items()
+                                 if isinstance(v, (int, float))},
+                diagnosis     = d.get("title"),
+                risk          = d.get("risk"),
+            )
+        return {"saved": True, "id": msg.id}
+    finally:
+        db.close()
+
+
+@app.get("/chat/history")
+def chat_history(limit: int = 100,
+                 username: str = Depends(get_current_user_required)):
+    """Load saved chat history for current user."""
+    if not DB_AVAILABLE:
+        return {"messages": [], "total": 0}
+    db = SessionLocal()
+    try:
+        user = get_user(db, username)
+        if not user:
+            raise HTTPException(404, "User not found")
+        msgs = get_chat_history(db, user.id, limit)
+        return {
+            "messages": [
+                {
+                    "id":             m.id,
+                    "role":           m.role,
+                    "message":        m.message,
+                    "message_type":   m.message_type,
+                    "anomaly_score":  m.anomaly_score,
+                    "mission_status": m.mission_status,
+                    "timestamp":      m.timestamp.isoformat(),
+                }
+                for m in msgs
+            ],
+            "total": len(msgs),
+        }
+    finally:
+        db.close()
+
+
+@app.get("/anomaly/history")
+def anomaly_history_db(limit: int = 100,
+                       username: str = Depends(get_current_user_required)):
+    """Load anomaly event history for current user from database."""
+    if not DB_AVAILABLE:
+        return {"events": [], "total": 0}
+    db = SessionLocal()
+    try:
+        user = get_user(db, username)
+        if not user:
+            raise HTTPException(404, "User not found")
+        events = get_anomaly_history(db, user.id, limit)
+        return {
+            "events": [
+                {
+                    "id":             e.id,
+                    "event_type":     e.event_type,
+                    "anomaly_score":  e.anomaly_score,
+                    "mission_status": e.mission_status,
+                    "dominant_cause": e.dominant_cause,
+                    "cnn_event":      e.cnn_event,
+                    "stalta_ratio":   e.stalta_ratio,
+                    "diagnosis":      e.diagnosis,
+                    "risk_level":     e.risk_level,
+                    "timestamp":      e.timestamp.isoformat(),
+                }
+                for e in events
+            ],
+            "total": len(events),
+        }
+    finally:
+        db.close()
+
+
+# ================================================================
+# INIT DATABASE ON STARTUP
+# ================================================================
+if DB_AVAILABLE:
+    try:
+        init_db()
+    except Exception as _dbi:
+        print(f"[DB] Init failed: {_dbi}")
+
+
+@app.get("/")
+def serve_root():
+    """Redirect root to login page."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/login", status_code=302)
 
 
 def explain_with_image(question: str, img_ctx: dict) -> str:
