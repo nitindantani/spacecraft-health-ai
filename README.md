@@ -7,6 +7,7 @@
   <img src="https://img.shields.io/badge/FastAPI-0.100-009688?style=flat-square&logo=fastapi"/>
   <img src="https://img.shields.io/badge/Ollama-llama3%20%7C%20llava-black?style=flat-square"/>
   <img src="https://img.shields.io/badge/ISRO-Chandrayaan--3-orange?style=flat-square"/>
+  <img src="https://img.shields.io/badge/groq-groqAPI-red?style=flat-square&logo=groq"/>
 </p>
 
 <p align="center">
