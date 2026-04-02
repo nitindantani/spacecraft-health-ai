@@ -12,7 +12,9 @@
 <p align="center">
   A production-grade AI system that monitors the Chandrayaan-3 ILSA (Instrument for Lunar Seismic Activity) seismometer in real time — detecting anomalies, classifying lunar seismic events, and providing natural language explanations via a conversational chat interface.
 </p>
-
+<p>
+  Live : https://huggingface.co/spaces/nitindantani/spacecraft-health-ai
+</p>
 ---
 
 ## What It Does
